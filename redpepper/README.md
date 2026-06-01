@@ -10,6 +10,7 @@
 </p>
 
 <p align="center">
+  <img src="https://img.shields.io/badge/Version-v0.0.3-orange" alt="Version v0.0.3">
   <img src="https://img.shields.io/badge/Python-3.10%2B-blue" alt="Python 3.10+">
   <img src="https://img.shields.io/badge/License-MIT-green" alt="MIT License">
   <img src="https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey" alt="Platform">
@@ -19,6 +20,7 @@
 
 ## 目录 / Table of Contents
 
+- [项目简介 / Project Overview](#项目简介--project-overview)
 - [项目定位 / Project Positioning](#项目定位--project-positioning)
 - [功能特性 / Features](#功能特性--features)
 - [Roadmap 开发路线图](#roadmap-开发路线图)
@@ -37,6 +39,20 @@
 - [项目目录结构 / Directory Structure](#项目目录结构--directory-structure)
 - [安全说明 / Security](#安全说明--security)
 - [开发团队 / Team](#开发团队--team)
+
+---
+
+## 项目简介 / Project Overview
+
+**当前版本：v0.0.3**
+
+RedPepper（红椒）是一款面向 A 股个人投资者的本地桌面应用，聚焦“数据沉淀 + AI 辅助 + 本地安全”。
+
+- 以账户持仓、交易记录、观察池、知识链接为核心的数据中台
+- 以截图 OCR、新闻解读、日报生成为核心的 AI 助手能力
+- 以本地 SQLite 与密钥本地管理为核心的隐私与安全策略
+
+适合希望形成长期投资工作流、并且重视数据主权和可持续复盘的个人投资者。
 
 ---
 
