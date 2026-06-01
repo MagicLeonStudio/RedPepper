@@ -1,0 +1,23 @@
+app:
+  name: "RedPepper"
+  version: "0.1.0"
+  data_dir: "./data"
+ai:
+  default_provider: "deepseek"
+  providers:
+    kimi:
+      api_key: ""
+      base_url: "https://api.moonshot.cn/v1"
+      default_model: "moonshot-v1-8k"
+    deepseek:
+      api_key: ""
+      base_url: "https://api.deepseek.com/v1"
+      default_model: "deepseek-chat"
+  scene_models:
+    screenshot_ocr: "kimi"
+    daily_report: "deepseek"
+    knowledge_digest: "deepseek"
+    strategy_analysis: "deepseek"
+server:
+  host: "127.0.0.1"
+  port: 8000
