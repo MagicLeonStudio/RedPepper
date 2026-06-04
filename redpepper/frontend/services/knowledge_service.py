@@ -7,10 +7,10 @@ class KnowledgeService:
         self.base_path = "/api/knowledge"
 
     def get_all(self) -> list:
-        return self.client.get(self.base_path)
+        return self.client.get(f"{self.base_path}/")
 
     def create(self, data: dict) -> dict:
-        return self.client.post(self.base_path, json=data)
+        return self.client.post(f"{self.base_path}/", json=data)
 
     def delete(self, knowledge_id: int) -> None:
         self.client.delete(f"{self.base_path}/{knowledge_id}")

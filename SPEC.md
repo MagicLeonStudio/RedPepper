@@ -138,8 +138,10 @@ redpepper/
 │   │   ├── log_entry.py          # 日志条目
 │   │   └── chart_widget.py       # 图表组件
 │   └── resources/                # 资源文件
-│       ├── logo.png              # Logo
 │       └── style.qss             # Qt 样式表
+├── assets/                       # 品牌资源
+│   ├── logo.png                  # 登录页 / 首页完整 Logo
+│   └── logo-icon.png             # 软件缩略图标
 └── tests/                        # 测试
     ├── __init__.py
     ├── test_security.py

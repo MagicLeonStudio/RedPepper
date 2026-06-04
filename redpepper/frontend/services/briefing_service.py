@@ -7,10 +7,13 @@ class BriefingService:
         self.base_path = "/api/briefing"
 
     def get_all(self) -> list:
-        return self.client.get(self.base_path)
+        result = self.client.get(f"{self.base_path}/")
+        return [self._normalize_item(item) for item in result]
 
     def create(self, data: dict) -> dict:
-        return self.client.post(self.base_path, json=data)
+        payload = self._to_api_payload(data)
+        item = self.client.post(f"{self.base_path}/", json=payload)
+        return self._normalize_item(item)
 
     def delete(self, briefing_id: int) -> None:
         self.client.delete(f"{self.base_path}/{briefing_id}")
@@ -26,9 +29,36 @@ class BriefingService:
         return self.create(data)
 
     def get_events(self) -> list:
-        """Return empty list – events not yet implemented in backend."""
-        return []
+        result = self.client.get(f"{self.base_path}/events")
+        return [self._normalize_event(item) for item in result]
 
     def add_event(self, data: dict) -> dict:
-        """No-op – events not yet implemented."""
-        return {"message": "Events not yet implemented"}
+        payload = self._to_event_payload(data)
+        item = self.client.post(f"{self.base_path}/events", json=payload)
+        return self._normalize_event(item)
+
+    def _normalize_item(self, item: dict) -> dict:
+        normalized = dict(item)
+        normalized["trend"] = normalized.get("market", "") or ""
+        normalized["judgment"] = normalized.get("summary", "") or ""
+        return normalized
+
+    def _to_api_payload(self, data: dict) -> dict:
+        payload = dict(data)
+        if "trend" in payload:
+            payload["market"] = payload.pop("trend") or None
+        if "judgment" in payload:
+            payload["summary"] = payload.pop("judgment") or None
+        return payload
+
+    def _normalize_event(self, item: dict) -> dict:
+        normalized = dict(item)
+        normalized["title"] = normalized.get("description", "") or ""
+        return normalized
+
+    def _to_event_payload(self, data: dict) -> dict:
+        payload = dict(data)
+        payload["description"] = payload.pop("title", "")
+        payload.setdefault("impact", None)
+        payload.setdefault("level", "中")
+        return payload

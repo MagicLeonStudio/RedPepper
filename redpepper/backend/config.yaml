@@ -1,23 +1,23 @@
-app:
-  name: "RedPepper"
-  version: "0.1.0"
-  data_dir: "./data"
 ai:
-  default_provider: "deepseek"
+  default_provider: kimi
   providers:
-    kimi:
-      api_key: ""
-      base_url: "https://api.moonshot.cn/v1"
-      default_model: "moonshot-v1-8k"
     deepseek:
-      api_key: ""
-      base_url: "https://api.deepseek.com/v1"
-      default_model: "deepseek-chat"
+      api_key: sk-f2f50773a3704f398bcc69ea00795797
+      base_url: https://api.deepseek.com
+      default_model: deepseek-v4-flash
+    kimi:
+      api_key: sk-yIuSZ2aWUjSH085FFxxK8eYrLYiPV2mN9GpfGYX2ml4XMR3u
+      base_url: https://api.moonshot.cn/v1
+      default_model: kimi-k2.6
   scene_models:
-    screenshot_ocr: "kimi"
-    daily_report: "deepseek"
-    knowledge_digest: "deepseek"
-    strategy_analysis: "deepseek"
+    daily_report: deepseek-v4-flash
+    knowledge_digest: deepseek-v4-pro
+    screenshot_ocr: kimi-k2.6
+    strategy_analysis: kimi-k2.6
+app:
+  data_dir: ./data
+  name: RedPepper
+  version: 0.1.0
 server:
-  host: "127.0.0.1"
+  host: 127.0.0.1
   port: 8000

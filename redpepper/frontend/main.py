@@ -1,14 +1,20 @@
 """RedPepper GUI entry point."""
 
+import atexit
+import os
+import signal
 import sys
 import subprocess
-import os
 import time
+from pathlib import Path
+import urllib.error
+import urllib.request
 
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QFont, QPalette, QColor
+from PyQt6.QtGui import QFont, QPalette, QColor, QIcon
 
+from frontend.app_meta import logo_icon_path, stylesheet_path
 from frontend.windows.login_window import LoginWindow
 from frontend.windows.main_window import MainWindow
 from frontend.i18n.translator import set_locale, tr
@@ -18,27 +24,78 @@ BG_DARK = "#0D0D1A"
 BG_CARD = "#1A1A2E"
 TEXT_PRIMARY = "#E8E8F0"
 TEXT_SECONDARY = "#7A7A9E"
-BRAND_RED = "#E62E2E"
+BRAND_RED = "#F05C77"
 ACCENT_PURPLE = "#8B5CF6"
-PROFIT_RED = "#EF4444"
-LOSS_GREEN = "#22C55E"
-BORDER_COLOR = "#8B5CF633"
+PROFIT_RED = "#F05C77"
+LOSS_GREEN = "#8B6FD6"
+BORDER_COLOR = "#338B5CF6"
+
+_backend_process: subprocess.Popen | None = None
+
+
+def _is_backend_running(host: str = "127.0.0.1", port: int = 8000) -> bool:
+    try:
+        req = urllib.request.Request(f"http://{host}:{port}/api/health", method="GET")
+        with urllib.request.urlopen(req, timeout=1.5) as resp:
+            return resp.status == 200
+    except Exception:
+        return False
+
+
+def stop_backend() -> None:
+    """Stop the backend server only if this frontend instance started it."""
+    global _backend_process
+    if _backend_process is None:
+        return
+
+    process = _backend_process
+    _backend_process = None
+
+    if process.poll() is not None:
+        return
+
+    try:
+        process.terminate()
+        process.wait(timeout=5)
+    except Exception:
+        try:
+            process.kill()
+            process.wait(timeout=5)
+        except Exception:
+            pass
 
 
 def start_backend():
     """Start the backend uvicorn server."""
+    global _backend_process
+
+    if _is_backend_running():
+        _backend_process = None
+        return None
+
     project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     try:
-        subprocess.Popen(
+        creationflags = 0
+        if os.name == "nt":
+            creationflags = subprocess.CREATE_NEW_PROCESS_GROUP
+
+        _backend_process = subprocess.Popen(
             [sys.executable, "-m", "uvicorn", "backend.app.main:app",
              "--host", "127.0.0.1", "--port", "8000", "--log-level", "warning"],
             cwd=project_root,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            creationflags=creationflags,
         )
-        time.sleep(3)
+        for _ in range(12):
+            if _is_backend_running():
+                break
+            time.sleep(0.5)
+        return _backend_process
     except Exception as e:
+        _backend_process = None
         print(f"Backend start warning: {e}")
+        return None
 
 
 def setup_dark_palette(app):
@@ -56,15 +113,31 @@ def setup_dark_palette(app):
     app.setPalette(palette)
 
 
+def apply_global_style(app: QApplication) -> None:
+    style_path = stylesheet_path()
+    if style_path.exists():
+        app.setStyleSheet(style_path.read_text(encoding="utf-8"))
+
+
+def apply_app_icon(app: QApplication) -> None:
+    icon_path = logo_icon_path()
+    if icon_path.exists():
+        app.setWindowIcon(QIcon(str(icon_path)))
+
+
 def main():
     """Main application entry point."""
     app = QApplication(sys.argv)
+    atexit.register(stop_backend)
+    app.aboutToQuit.connect(stop_backend)
     app.setStyle("Fusion")
     setup_dark_palette(app)
+    apply_global_style(app)
+    apply_app_icon(app)
 
-    font = QFont("Microsoft YaHei", 10)
+    font = QFont("Microsoft YaHei UI", 10)
     if not QFont(font).exactMatch():
-        font = QFont("Arial", 10)
+        font = QFont("Segoe UI", 10)
     app.setFont(font)
 
     start_backend()

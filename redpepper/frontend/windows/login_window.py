@@ -7,12 +7,12 @@ from pathlib import Path
 
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
-    QPushButton, QMessageBox, QWidget, QProgressBar, QFrame,
-    QGraphicsDropShadowEffect, QSpacerItem, QSizePolicy,
+    QPushButton, QProgressBar, QFrame, QGraphicsDropShadowEffect,
 )
-from PyQt6.QtCore import Qt, QTimer, QSize
+from PyQt6.QtCore import Qt, QSize, QPropertyAnimation, QEasingCurve, QRect, QParallelAnimationGroup
 from PyQt6.QtGui import QFont, QColor, QPixmap, QIcon
 
+from frontend.app_meta import APP_VERSION, full_logo_path, logo_icon_path, team_logo_path
 from frontend.i18n.translator import tr
 
 
@@ -22,11 +22,16 @@ class LoginWindow(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle(tr("login.title"))
-        self.setFixedSize(520, 700)
+        self.setFixedSize(560, 740)
         self.setWindowFlags(Qt.WindowType.Dialog | Qt.WindowType.WindowCloseButtonHint)
+        icon_path = logo_icon_path()
+        if icon_path.exists():
+            self.setWindowIcon(QIcon(str(icon_path)))
 
         self._failed_attempts = 0
         self._is_first_use = True  # Will check via API
+        self._intro_played = False
+        self._intro_group = None
 
         self._build_ui()
         self._apply_styles()
@@ -38,14 +43,13 @@ class LoginWindow(QDialog):
 
     def _get_logo_path(self) -> str | None:
         """Resolve the path to the logo PNG."""
-        candidates = [
-            Path(__file__).resolve().parent.parent / "resources" / "logo.png",
-            Path(__file__).resolve().parent.parent.parent.parent.parent / "frontend" / "resources" / "logo.png",
-        ]
-        for p in candidates:
-            if p.exists():
-                return str(p)
-        return None
+        path = full_logo_path()
+        return str(path) if path.exists() else None
+
+    def _get_team_logo_path(self) -> str | None:
+        """Resolve the path to the team logo PNG."""
+        path = team_logo_path()
+        return str(path) if path.exists() else None
 
     def _check_first_use(self):
         """Query backend to determine first-use mode."""
@@ -65,71 +69,108 @@ class LoginWindow(QDialog):
 
     def _build_ui(self):
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(56, 24, 56, 28)
-        layout.setSpacing(12)
+        layout.setContentsMargins(26, 24, 26, 24)
+        layout.setSpacing(0)
+        layout.addStretch(1)
 
-        # ---- Logo ----
+        self.card = QFrame()
+        self.card.setObjectName("LoginCard")
+        card_shadow = QGraphicsDropShadowEffect(self.card)
+        card_shadow.setBlurRadius(40)
+        card_shadow.setOffset(0, 14)
+        card_shadow.setColor(QColor(0, 0, 0, 150))
+        self.card.setGraphicsEffect(card_shadow)
+
+        card_layout = QVBoxLayout(self.card)
+        card_layout.setContentsMargins(34, 24, 34, 22)
+        card_layout.setSpacing(12)
+
+        accent = QFrame()
+        accent.setObjectName("TopAccent")
+        accent.setFixedHeight(4)
+        card_layout.addWidget(accent)
+
+        card_layout.addSpacing(2)
+
+        # ---- Logos (RedPepper + Team) ----
+        logo_row = QHBoxLayout()
+        logo_row.setSpacing(18)
+
         self.logo_label = QLabel()
         self.logo_label.setObjectName("LogoLabel")
         self.logo_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.logo_label.setMinimumHeight(88)
-        logo_loaded = self._load_logo()
-        layout.addWidget(self.logo_label)
+        self.logo_label.setMinimumHeight(84)
+        logo_row.addWidget(self.logo_label, 1)
+
+        self.team_logo_label = QLabel()
+        self.team_logo_label.setObjectName("TeamLogoLabel")
+        self.team_logo_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.team_logo_label.setMinimumHeight(84)
+        logo_row.addWidget(self.team_logo_label, 1)
+
+        redpepper_logo_loaded, team_logo_loaded = self._load_logos()
+        card_layout.addLayout(logo_row)
 
         # ---- App name ----
         self.name_label = QLabel(tr("app_name"))
         self.name_label.setObjectName("BrandLabel")
         self.name_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.name_label.setFont(QFont("Microsoft YaHei", 22, QFont.Weight.Bold))
-        self.name_label.setStyleSheet("color: #E85D3B; margin-top: 0px; margin-bottom: 2px;")
-        self.name_label.setVisible(not logo_loaded)
-        layout.addWidget(self.name_label)
+        self.name_label.setFont(QFont("Microsoft YaHei UI", 22, QFont.Weight.Bold))
+        self.name_label.setStyleSheet("color: #F1704B; margin-top: 0px; margin-bottom: 0px;")
+        self.name_label.setVisible(not (redpepper_logo_loaded or team_logo_loaded))
+        card_layout.addWidget(self.name_label)
 
         # ---- Subtitle ----
         subtitle = QLabel(tr("login.subtitle"))
         subtitle.setObjectName("SubtitleLabel")
         subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        subtitle.setFont(QFont("Microsoft YaHei", 10))
-        subtitle.setStyleSheet("color: #8B8FB2; margin-bottom: 10px;")
-        layout.addWidget(subtitle)
+        subtitle.setFont(QFont("Microsoft YaHei UI", 10))
+        subtitle.setStyleSheet("color: #9FA7C7; margin-bottom: 10px;")
+        card_layout.addWidget(subtitle)
 
         # ---- Divider line ----
         line = QFrame()
         line.setFrameShape(QFrame.Shape.HLine)
-        line.setStyleSheet("color: #2A2A3E; max-height: 1px; margin: 2px 0 4px 0;")
-        layout.addWidget(line)
+        line.setStyleSheet("color: #2B335B; max-height: 1px; margin: 2px 0 6px 0;")
+        card_layout.addWidget(line)
 
-        layout.addSpacing(8)
+        card_layout.addSpacing(4)
 
         # ---- Dynamic Title ----
         self.title_label = QLabel()
-        self.title_label.setFont(QFont("Microsoft YaHei", 15, QFont.Weight.Bold))
+        self.title_label.setFont(QFont("Microsoft YaHei UI", 15, QFont.Weight.Bold))
         self.title_label.setStyleSheet("color: #E8E8F0;")
         self.title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(self.title_label)
+        card_layout.addWidget(self.title_label)
 
-        layout.addSpacing(6)
+        card_layout.addSpacing(2)
 
         # ---- Username Input ----
         self.username_input = QLineEdit()
         self.username_input.setPlaceholderText(tr("login.username_placeholder"))
-        self.username_input.setMinimumHeight(44)
-        layout.addWidget(self.username_input)
+        self.username_input.setObjectName("InputInRow")
+        self.username_input.setMinimumHeight(46)
+        self.username_row = self._build_input_row("👤", self.username_input)
+        card_layout.addWidget(self.username_row)
 
         # ---- Password Input ----
         self.password_input = QLineEdit()
         self.password_input.setPlaceholderText(tr("login.password_placeholder"))
         self.password_input.setEchoMode(QLineEdit.EchoMode.Password)
-        self.password_input.setMinimumHeight(44)
+        self.password_input.setObjectName("InputInRow")
+        self.password_input.setMinimumHeight(46)
         self.password_input.textChanged.connect(self._on_password_changed)
-        layout.addWidget(self.password_input)
+        self.password_row = self._build_input_row("🔒", self.password_input)
+        card_layout.addWidget(self.password_row)
 
         # ---- Confirm Password (first use only) ----
         self.confirm_input = QLineEdit()
         self.confirm_input.setPlaceholderText(tr("login.confirm_password"))
         self.confirm_input.setEchoMode(QLineEdit.EchoMode.Password)
-        self.confirm_input.setMinimumHeight(44)
-        layout.addWidget(self.confirm_input)
+        self.confirm_input.setObjectName("InputInRow")
+        self.confirm_input.setMinimumHeight(46)
+        self.confirm_row = self._build_input_row("🔐", self.confirm_input)
+        card_layout.addWidget(self.confirm_row)
 
         # ---- Password Strength Bar (first use only) ----
         self.strength_bar = QProgressBar()
@@ -137,26 +178,27 @@ class LoginWindow(QDialog):
         self.strength_bar.setValue(0)
         self.strength_bar.setTextVisible(True)
         self.strength_bar.setMaximumHeight(16)
-        layout.addWidget(self.strength_bar)
+        card_layout.addWidget(self.strength_bar)
 
         self.strength_label = QLabel(tr("login.password_strength"))
         self.strength_label.setStyleSheet("color: #7A7A9E; font-size: 11px;")
-        layout.addWidget(self.strength_label)
+        card_layout.addWidget(self.strength_label)
 
         # ---- Error Message ----
         self.error_label = QLabel("")
-        self.error_label.setStyleSheet("color: #EF4444; font-size: 12px;")
+        self.error_label.setStyleSheet("color: #FF7A93; font-size: 12px;")
         self.error_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(self.error_label)
+        card_layout.addWidget(self.error_label)
 
-        layout.addStretch(1)
+        card_layout.addStretch(1)
 
         # ---- Action Button ----
         self.action_btn = QPushButton()
-        self.action_btn.setMinimumHeight(48)
+        self.action_btn.setObjectName("PrimaryActionButton")
+        self.action_btn.setMinimumHeight(50)
         self.action_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.action_btn.clicked.connect(self._on_action)
-        layout.addWidget(self.action_btn)
+        card_layout.addWidget(self.action_btn)
 
         # ---- Switch Mode Link ----
         self.switch_btn = QPushButton()
@@ -173,36 +215,58 @@ class LoginWindow(QDialog):
         """)
         self.switch_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.switch_btn.clicked.connect(self._toggle_mode)
-        layout.addWidget(self.switch_btn, alignment=Qt.AlignmentFlag.AlignCenter)
+        card_layout.addWidget(self.switch_btn, alignment=Qt.AlignmentFlag.AlignCenter)
 
         # ---- Version ----
-        version_label = QLabel("v0.1.0")
+        version_label = QLabel(APP_VERSION)
         version_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         version_label.setStyleSheet("color: #7A7A9E; font-size: 10px;")
-        layout.addWidget(version_label)
+        card_layout.addWidget(version_label)
+
+        layout.addWidget(self.card)
+        layout.addStretch(1)
+
+    def _build_input_row(self, icon_text: str, input_widget: QLineEdit) -> QFrame:
+        row = QFrame()
+        row.setObjectName("InputRow")
+        row_layout = QHBoxLayout(row)
+        row_layout.setContentsMargins(12, 0, 12, 0)
+        row_layout.setSpacing(8)
+
+        icon_label = QLabel(icon_text)
+        icon_label.setObjectName("InputIcon")
+        icon_label.setFixedWidth(22)
+        icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        row_layout.addWidget(icon_label)
+
+        row_layout.addWidget(input_widget, 1)
+        return row
 
     # ------------------------------------------------------------------ #
     # Logo loading
     # ------------------------------------------------------------------ #
 
-    def _load_logo(self) -> bool:
-        """Load and display the RedPepper logo."""
-        logo_path = self._get_logo_path()
-        if logo_path and os.path.exists(logo_path):
-            pixmap = QPixmap(logo_path)
-            if not pixmap.isNull():
-                # Scale to fit while maintaining aspect ratio
-                scaled = pixmap.scaled(
-                    QSize(200, 92),
-                    Qt.AspectRatioMode.KeepAspectRatio,
-                    Qt.TransformationMode.SmoothTransformation,
-                )
-                self.logo_label.setPixmap(scaled)
-                return True
-        # Fallback: show a styled text logo
-        self.logo_label.setText("🌶️")
-        self.logo_label.setFont(QFont("Arial", 56))
-        return False
+    def _load_logos(self) -> tuple[bool, bool]:
+        """Load and display RedPepper + team logos side-by-side."""
+
+        def _load_into(label: QLabel, path: str | None, fallback_text: str) -> bool:
+            if path and os.path.exists(path):
+                pixmap = QPixmap(path)
+                if not pixmap.isNull():
+                    scaled = pixmap.scaled(
+                        QSize(190, 86),
+                        Qt.AspectRatioMode.KeepAspectRatio,
+                        Qt.TransformationMode.SmoothTransformation,
+                    )
+                    label.setPixmap(scaled)
+                    return True
+            label.setText(fallback_text)
+            label.setFont(QFont("Arial", 32))
+            return False
+
+        redpepper_loaded = _load_into(self.logo_label, self._get_logo_path(), "🌶️")
+        team_loaded = _load_into(self.team_logo_label, self._get_team_logo_path(), "🏷")
+        return redpepper_loaded, team_loaded
 
     # ------------------------------------------------------------------ #
     # Styling
@@ -211,13 +275,38 @@ class LoginWindow(QDialog):
     def _apply_styles(self):
         self.setStyleSheet("""
             QDialog {
-                background-color: #0B0D24;
+                background-color: qradialgradient(
+                    cx: 0.16, cy: 0.08, radius: 1.05,
+                    fx: 0.16, fy: 0.08,
+                    stop: 0 #2B1D37,
+                    stop: 0.45 #131C3C,
+                    stop: 1 #090E21
+                );
+            }
+            QFrame#LoginCard {
+                background-color: rgba(14, 19, 41, 0.94);
+                border: 1px solid #334173;
+                border-radius: 18px;
+            }
+            QFrame#TopAccent {
+                border: none;
+                border-radius: 2px;
+                background: qlineargradient(
+                    spread: pad, x1: 0, y1: 0, x2: 1, y2: 0,
+                    stop: 0 #EE6A43,
+                    stop: 0.5 #E8B03A,
+                    stop: 1 #F05C77
+                );
             }
             QLabel {
                 color: #E8E8F0;
             }
             QLabel#LogoLabel {
-                margin-top: 4px;
+                margin-top: 2px;
+                margin-bottom: 0px;
+            }
+            QLabel#TeamLogoLabel {
+                margin-top: 2px;
                 margin-bottom: 0px;
             }
             QLabel#BrandLabel {
@@ -227,47 +316,56 @@ class LoginWindow(QDialog):
             QLabel#SubtitleLabel {
                 margin-bottom: 12px;
             }
-            QLineEdit {
-                background-color: #171A35;
-                color: #E8E8F0;
-                border: 1px solid #2D3E72;
-                border-radius: 10px;
-                padding: 10px 14px;
+            QFrame#InputRow {
+                background-color: #1A2347;
+                border: 1px solid #394A80;
+                border-radius: 11px;
+            }
+            QLabel#InputIcon {
+                color: #C8D3FF;
                 font-size: 14px;
             }
-            QLineEdit:focus {
-                border: 1px solid #3CB371;
+            QLineEdit#InputInRow {
+                background-color: transparent;
+                color: #F2F5FF;
+                border: none;
+                border-radius: 0px;
+                padding: 11px 2px;
+                font-size: 14px;
             }
-            QPushButton {
+            QLineEdit#InputInRow:focus {
+                background-color: transparent;
+            }
+            QPushButton#PrimaryActionButton {
                 background: qlineargradient(
                     spread: pad, x1: 0, y1: 0, x2: 1, y2: 0,
-                    stop: 0 #C23B22,
-                    stop: 1 #9F5A9A
+                    stop: 0 #E95F3E,
+                    stop: 1 #D74B68
                 );
                 color: #FFFFFF;
                 border: none;
-                border-radius: 10px;
+                border-radius: 11px;
                 padding: 12px 24px;
-                font-size: 14px;
-                font-weight: bold;
+                font-size: 15px;
+                font-weight: 700;
             }
-            QPushButton:hover {
+            QPushButton#PrimaryActionButton:hover {
                 background: qlineargradient(
                     spread: pad, x1: 0, y1: 0, x2: 1, y2: 0,
-                    stop: 0 #E85D3B,
-                    stop: 1 #B06AB3
+                    stop: 0 #F37753,
+                    stop: 1 #E45C7C
                 );
             }
-            QPushButton:pressed {
+            QPushButton#PrimaryActionButton:pressed {
                 background: qlineargradient(
                     spread: pad, x1: 0, y1: 0, x2: 1, y2: 0,
-                    stop: 0 #A03018,
-                    stop: 1 #5A3568
+                    stop: 0 #C94B31,
+                    stop: 1 #B54057
                 );
             }
             QProgressBar {
-                background-color: #1A1A2E;
-                border: 1px solid #2A2A3E;
+                background-color: #101735;
+                border: 1px solid #2A355F;
                 border-radius: 4px;
                 text-align: center;
                 color: #E8E8F0;
@@ -285,19 +383,49 @@ class LoginWindow(QDialog):
         if self._first_use_mode:
             self.title_label.setText(tr("login.set_password_first"))
             self.action_btn.setText(tr("login.setup_btn"))
-            self.username_input.show()
-            self.confirm_input.show()
+            self.username_row.show()
+            self.confirm_row.show()
             self.strength_bar.show()
             self.strength_label.show()
             self.switch_btn.setText(tr("login.already_have_account"))
         else:
             self.title_label.setText(tr("login.title"))
             self.action_btn.setText(tr("login.login_btn"))
-            self.username_input.show()
-            self.confirm_input.hide()
+            self.username_row.show()
+            self.confirm_row.hide()
             self.strength_bar.hide()
             self.strength_label.hide()
             self.switch_btn.setText(tr("login.first_time"))
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        if not self._intro_played:
+            self._intro_played = True
+            self._run_intro_animation()
+
+    def _run_intro_animation(self):
+        end_rect = self.card.geometry()
+        start_rect = QRect(end_rect.x(), end_rect.y() + 24, end_rect.width(), end_rect.height())
+
+        self.card.setGeometry(start_rect)
+        self.setWindowOpacity(0.0)
+
+        move_anim = QPropertyAnimation(self.card, b"geometry", self)
+        move_anim.setDuration(380)
+        move_anim.setStartValue(start_rect)
+        move_anim.setEndValue(end_rect)
+        move_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+
+        fade_anim = QPropertyAnimation(self, b"windowOpacity", self)
+        fade_anim.setDuration(320)
+        fade_anim.setStartValue(0.0)
+        fade_anim.setEndValue(1.0)
+        fade_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+
+        self._intro_group = QParallelAnimationGroup(self)
+        self._intro_group.addAnimation(move_anim)
+        self._intro_group.addAnimation(fade_anim)
+        self._intro_group.start()
 
     def _toggle_mode(self):
         self._first_use_mode = not self._first_use_mode
@@ -333,7 +461,7 @@ class LoginWindow(QDialog):
             self.strength_label.setText(tr("login.strength_weak"))
             self.strength_bar.setStyleSheet("""
                 QProgressBar { background-color: #1A1A2E; border: 1px solid #2A2A3E; border-radius: 4px; text-align: center; }
-                QProgressBar::chunk { background-color: #EF4444; border-radius: 4px; }
+                QProgressBar::chunk { background-color: #F05C77; border-radius: 4px; }
             """)
         elif strength < 70:
             self.strength_label.setText(tr("login.strength_medium"))
@@ -345,7 +473,7 @@ class LoginWindow(QDialog):
             self.strength_label.setText(tr("login.strength_strong"))
             self.strength_bar.setStyleSheet("""
                 QProgressBar { background-color: #1A1A2E; border: 1px solid #2A2A3E; border-radius: 4px; text-align: center; }
-                QProgressBar::chunk { background-color: #22C55E; border-radius: 4px; }
+                QProgressBar::chunk { background-color: #8B6FD6; border-radius: 4px; }
             """)
 
     # ------------------------------------------------------------------ #

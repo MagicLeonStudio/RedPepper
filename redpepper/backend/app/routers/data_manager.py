@@ -15,10 +15,10 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.dependencies import get_db
-from app.database import DATABASE_PATH
-from app.models import Portfolio, Watchlist, TradeLog
-from app.security import export_database, import_database
+from backend.app.dependencies import get_db
+from backend.app.database import DATABASE_PATH
+from backend.app.models import Portfolio, Watchlist, TradeLog
+from backend.app.security import export_database, import_database
 
 router = APIRouter()
 

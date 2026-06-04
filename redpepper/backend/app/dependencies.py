@@ -8,7 +8,7 @@ from __future__ import annotations
 from fastapi import Depends
 from sqlalchemy.orm import Session
 
-from app.database import SessionLocal
+from backend.app.database import SessionLocal
 
 
 # ---------------------------------------------------------------------------
@@ -23,7 +23,7 @@ def get_db() -> Session:
 
         from fastapi import Depends, APIRouter
         from sqlalchemy.orm import Session
-        from app.dependencies import get_db
+        from backend.app.dependencies import get_db
 
         router = APIRouter()
 

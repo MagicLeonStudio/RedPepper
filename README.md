@@ -1,19 +1,19 @@
 <p align="center">
-  <img src="assets/logo.png" alt="RedPepper Logo" width="120">
-</p>
+  <img src="assets/banner.png" alt="RedPepper Logo" width="1080">
+</p> 
 
-<h1 align="center">RedPepper 红椒</h1>
+<h1 align="center"><img src="assets/logo-icon.png" alt="RedPepper Logo" width="32"> RedPepper 红椒</h1>
 
 <p align="center">
-  <b>A股个人投资基础设施</b><br>
+  <b>A股个人投资基础设施 | dev. by Magic Leon Studio</b> <img src="assets/logo_mls.png" alt="Magic Leon Studio Logo" width="25"><br>
   <i>Your Personal Investment Digital Companion</i>
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-v0.0.3-orange" alt="Version v0.0.3">
-  <img src="https://img.shields.io/badge/Python-3.10%2B-blue" alt="Python 3.10+">
-  <img src="https://img.shields.io/badge/License-MIT-green" alt="MIT License">
-  <img src="https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey" alt="Platform">
+  <img src="https://img.shields.io/badge/Version-v0.0.4-red" alt="Version v0.0.4">
+  <img src="https://img.shields.io/badge/Python-3.10%2B-purple" alt="Python 3.10+">
+  <img src="https://img.shields.io/badge/License-MIT-yellow" alt="MIT License">
+  <img src="https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-cyan" alt="Platform">
 </p>
 
 ---
@@ -24,8 +24,12 @@
 - [项目定位 / Project Positioning](#项目定位--project-positioning)
 - [功能特性 / Features](#功能特性--features)
 - [Roadmap 开发路线图](#roadmap-开发路线图)
-  - [Phase 1 — 基础框架](#phase-1--基础框架)
-  - [Phase 2 — 智能增强](#phase-2--智能增强)
+  - [Phase 1 — 基础框架（已完成）](#phase-1--基础框架已完成)
+  - [Phase 2 — 智能增强（进行中）](#phase-2--智能增强进行中)
+  - [Phase 3 — 知识深化（规划中）](#phase-3--知识深化规划中)
+  - [Phase 4 — 手机版预研（规划中）](#phase-4--手机版预研规划中)
+  - [当前版本进度快照（v0.0.4）](#当前版本进度快照v004)
+- [开发日志 / Changelog](#开发日志--changelog)
 - [技术架构 / Tech Stack](#技术架构--tech-stack)
 - [快速开始 / Quick Start](#快速开始--quick-start)
 - [首次使用流程 / First Time Setup](#首次使用流程--first-time-setup)
@@ -44,7 +48,7 @@
 
 ## 项目简介 / Project Overview
 
-**当前版本：v0.0.3**
+**当前版本：v0.0.4**
 
 RedPepper（红椒）是一款面向 A 股个人投资者的本地桌面应用，聚焦“数据沉淀 + AI 辅助 + 本地安全”。
 
@@ -110,7 +114,7 @@ RedPepper（红椒）是一款面向 A 股个人投资者的本地桌面应用�
 
 ## Roadmap 开发路线图
 
-### Phase 1 — 基础框架 / Foundation
+### Phase 1 — 基础框架（已完成） / Foundation
 
 **目标：建立安全可靠的本地化投资数据基础设施**
 
@@ -122,17 +126,68 @@ RedPepper（红椒）是一款面向 A 股个人投资者的本地桌面应用�
 - [x] 加密数据导出（`.redpepper` 格式备份与恢复）
 - [x] 双语界面支持（中文/English 一键切换）
 
-### Phase 2 — 智能增强 / Intelligence
+### Phase 2 — 智能增强（进行中） / Intelligence
 
 **目标：引入 AI 能力，提升投资决策效率**
 
-- [ ] 观察池管理（股票关注列表与动态跟踪）
-- [ ] 操作日志（买卖记录与操作理由记录）
-- [ ] 投资简报生成（AI 自动生成持仓日报）
-- [ ] 投资日记（AI 辅助复盘与心得记录）
-- [ ] 双 AI 模型切换（Kimi + DeepSeek 自由切换）
-- [ ] CSV 批量导入（历史数据批量迁移）
-- [ ] HTML 导入（券商交割单/对账单解析导入）
+- [x] 观察池管理（基础 CRUD、导入、状态流转）
+- [x] 操作日志（基础记录与回顾）
+- [x] 双 AI 模型切换（Kimi + DeepSeek）
+- [x] 截图两阶段导入（Kimi 提取 CSV + DeepSeek 结构化入库）
+- [x] 文本导入收敛（CSV/纯文本统一入口）
+- [x] 持仓与观察池同代码关联同步（导入后自动关联）
+- [ ] 投资简报生成（自动化任务链路待完善）
+- [ ] 投资日记（AI 深度复盘能力待完善）
+- [ ] AGIRich-Notebook HTML 导入（解析增强）
+
+### Phase 3 — 知识深化（规划中） / Knowledge Deepening
+
+**目标：构建投资知识闭环，提升长期复盘和决策质量**
+
+- [ ] 知识聚合中心增强（知乎/B站/网页链接更完整提取）
+- [ ] 知识图谱与关联分析（知识-知识、知识-标的）
+- [ ] 自动化日报生成（定时任务与模板稳定）
+
+### Phase 4 — 手机版预研（规划中） / Mobile Exploration
+
+**目标：为后续移动端形态做技术预研与接口准备**
+
+- [ ] 后端 API 文档化与移动端调用约束整理
+- [ ] 移动端技术方案评估（React Native / Flutter / PWA）
+- [ ] 与桌面端数据与权限模型对齐方案
+
+### 当前版本进度快照（v0.0.4）
+
+- 已完成：Phase 1 全量收口，Phase 2 核心能力已可用（导入、关联、双模型）
+- 进行中：Phase 2 深化（简报/日记自动化、HTML 深度导入、稳定性回归）
+- 规划中：Phase 3 知识深化、Phase 4 手机版预研
+- 下一里程碑：v0.0.5 聚焦 Phase 2 深化与 Phase 3 启动准备
+
+---
+
+## 开发日志 / Changelog
+
+### v0.0.4 (2026-06-04)
+
+本版本重点是“导入可靠性 + 数据一致性 + 体验修复”。
+
+**导入链路升级**
+- 持仓截图导入升级为两阶段：Kimi-k2.6 先提取 CSV，再由 DeepSeek-v4-flash 结构化入库
+- 新增截图提取结果实时确认环节，支持人工校正后再入库
+- CSV 与文本导入入口统一为文本导入，简化用户路径
+
+**数据一致性增强**
+- 持仓与观察池在导入后按股票代码自动关联，减少重复维护
+- 持仓/观察池导入流程补充关联回写与状态映射
+
+**稳定性与界面修复**
+- 修复多个页面数值空值导致的格式化异常
+- 仪表盘改为真实全局总览口径，并修复关键文案与 i18n 键
+- 统一处理部分页面标题文字显示不全问题
+- 登录页完成品牌化重构，支持 RedPepper 与 MLS 双 Logo 并排展示
+
+**工程侧清理**
+- 清理无用测试与探针脚本，降低仓库噪音
 
 ---
 
@@ -172,8 +227,8 @@ RedPepper（红椒）是一款面向 A 股个人投资者的本地桌面应用�
 
 ```bash
 # 1. 克隆仓库 / Clone repository
-git clone https://github.com/magic-leon-studio/redpepper.git
-cd redpepper
+git clone https://github.com/MagicLeonStudio/RedPepper.git
+cd RedPepper/redpepper
 
 # 2. 创建 Conda 环境（推荐）/ Create conda environment
 conda env create -f environment.yml
@@ -181,7 +236,18 @@ conda env create -f environment.yml
 # 3. 激活环境 / Activate environment
 conda activate redpepper
 
-# 4. 启动应用 / Launch application
+# 4. 起动
+# 终端 1：启动后端
+python -m uvicorn backend.app.main:app --reload --host 127.0.0.1 --port 8000
+# 终端 2：启动前端
+python -m frontend.main
+```
+
+也可以只启动前端，应用会自动拉起本地后端：
+
+```bash
+cd RedPepper/redpepper
+conda activate redpepper
 python -m frontend.main
 ```
 
@@ -430,8 +496,10 @@ redpepper/
 │   │   ├── portfolio_service.py
 │   │   └── ...
 │   └── resources/              # 静态资源
-│       ├── logo.png
 │       └── style.qss           # 深色主题样式表
+├── assets/                     # 品牌资源
+│   ├── logo.png                # 登录页 / 首页完整 Logo
+│   └── logo-icon.png           # 软件缩略图标
 ├── backend/                    # FastAPI 后端服务
 │   ├── app/
 │   │   ├── main.py             # FastAPI 入口

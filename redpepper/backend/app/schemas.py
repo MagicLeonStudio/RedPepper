@@ -61,8 +61,12 @@ class PortfolioBase(BaseModel):
     current_price: Optional[float] = None
     shares: Optional[int] = None
     account: str = Field(default="中信", max_length=50)
+    status: str = Field(default="持有中", max_length=20)
     reason: Optional[str] = None
     target: Optional[str] = Field(default=None, max_length=200)
+    group_name: Optional[str] = Field(default=None, max_length=50)
+    group_color: Optional[str] = Field(default=None, max_length=16)
+    group_order: int = Field(default=999, ge=0, le=9999)
 
 
 class PortfolioCreate(PortfolioBase):
@@ -86,8 +90,12 @@ class PortfolioUpdate(BaseModel):
     current_price: Optional[float] = None
     shares: Optional[int] = None
     account: Optional[str] = Field(default=None, max_length=50)
+    status: Optional[str] = Field(default=None, max_length=20)
     reason: Optional[str] = None
     target: Optional[str] = Field(default=None, max_length=200)
+    group_name: Optional[str] = Field(default=None, max_length=50)
+    group_color: Optional[str] = Field(default=None, max_length=16)
+    group_order: Optional[int] = Field(default=None, ge=0, le=9999)
 
 
 class PortfolioResponse(PortfolioBase):
@@ -115,6 +123,9 @@ class WatchlistBase(BaseModel):
     trigger_condition: Optional[str] = Field(default=None, max_length=200)
     rating: str = Field(default="⭐⭐⭐", max_length=20)
     status: str = Field(default="观察", max_length=20)
+    group_name: Optional[str] = Field(default=None, max_length=50)
+    group_color: Optional[str] = Field(default=None, max_length=16)
+    group_order: int = Field(default=999, ge=0, le=9999)
 
 
 class WatchlistCreate(WatchlistBase):
@@ -136,6 +147,9 @@ class WatchlistUpdate(BaseModel):
     trigger_condition: Optional[str] = Field(default=None, max_length=200)
     rating: Optional[str] = Field(default=None, max_length=20)
     status: Optional[str] = Field(default=None, max_length=20)
+    group_name: Optional[str] = Field(default=None, max_length=50)
+    group_color: Optional[str] = Field(default=None, max_length=16)
+    group_order: Optional[int] = Field(default=None, ge=0, le=9999)
 
 
 class WatchlistResponse(WatchlistBase):
@@ -490,6 +504,81 @@ class OCRRequest(BaseModel):
     """Screenshot OCR payload."""
 
     image_base64: str
+    fragment_mode: bool = False
+    fragment_index: Optional[int] = None
+    fragment_total: Optional[int] = None
+
+
+class OCRHolding(BaseModel):
+    """A holding extracted from a screenshot OCR request."""
+
+    code: str = Field(default="", max_length=20)
+    name: str = Field(default="", max_length=100)
+    type: str = Field(default="ETF", max_length=20)
+    amount: Optional[float] = None
+    profit: Optional[float] = None
+    cost_price: Optional[float] = None
+    shares: Optional[int] = None
+    account: str = Field(default="中信", max_length=50)
+    status: str = Field(default="持有中", max_length=20)
+    group_name: Optional[str] = Field(default=None, max_length=50)
+    group_color: Optional[str] = Field(default=None, max_length=16)
+    group_order: int = Field(default=999, ge=0, le=9999)
+
+
+class OCRResponse(BaseModel):
+    """Normalized OCR extraction response."""
+
+    provider: str
+    model: str
+    items: list[OCRHolding]
+    raw_text: str
+
+
+class OCRWatchlistItem(BaseModel):
+    """A watchlist item extracted from screenshot OCR."""
+
+    code: str = Field(default="", max_length=20)
+    name: str = Field(default="", max_length=100)
+    type: str = Field(default="股票", max_length=20)
+    sector: Optional[str] = Field(default=None, max_length=50)
+    reason: Optional[str] = None
+    trigger_condition: Optional[str] = Field(default=None, max_length=200)
+    rating: str = Field(default="⭐⭐⭐", max_length=20)
+    status: str = Field(default="观察", max_length=20)
+    group_name: Optional[str] = Field(default=None, max_length=50)
+    group_color: Optional[str] = Field(default=None, max_length=16)
+    group_order: int = Field(default=999, ge=0, le=9999)
+
+
+class OCRWatchlistResponse(BaseModel):
+    """Normalized watchlist OCR extraction response."""
+
+    provider: str
+    model: str
+    items: list[OCRWatchlistItem]
+    raw_text: str
+
+
+class OCRTradeLogItem(BaseModel):
+    """A trade log item extracted from screenshot OCR."""
+
+    date: str = Field(default="", max_length=10)
+    name: str = Field(default="", max_length=100)
+    code: str = Field(default="", max_length=20)
+    action: str = Field(default="", max_length=50)
+    amount: Optional[float] = None
+    reason: Optional[str] = None
+    emotion: Optional[str] = Field(default=None, max_length=50)
+
+
+class OCRTradeLogResponse(BaseModel):
+    """Normalized trade log OCR extraction response."""
+
+    provider: str
+    model: str
+    items: list[OCRTradeLogItem]
+    raw_text: str
 
 
 class AIChatMessage(BaseModel):

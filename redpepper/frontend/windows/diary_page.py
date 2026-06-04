@@ -15,9 +15,9 @@ BG_DARK = "#0D0D1A"
 BG_CARD = "#1A1A2E"
 TEXT_PRIMARY = "#E8E8F0"
 TEXT_SECONDARY = "#7A7A9E"
-BRAND_RED = "#E62E2E"
+BRAND_RED = "#F05C77"
 ACCENT_PURPLE = "#8B5CF6"
-BORDER_COLOR = "#8B5CF633"
+BORDER_COLOR = "#338B5CF6"
 
 GROUPBOX_STYLE = f"""
     QGroupBox {{
@@ -87,7 +87,7 @@ class DiaryEntryWidget(QFrame):
 
         date_str = self._data.get("date", "")
         self.date_label = QLabel(f"📅 {date_str}")
-        self.date_label.setFont(QFont("Arial", 13, QFont.Weight.Bold))
+        self.date_label.setFont(QFont("Microsoft YaHei UI", 13, QFont.Weight.Bold))
         self.date_label.setStyleSheet(f"color: {TEXT_PRIMARY};")
         header.addWidget(self.date_label)
 
@@ -161,7 +161,7 @@ class DiaryPage(QWidget):
 
         # Title
         title = QLabel(tr("Investment Diary"))
-        title.setFont(QFont("Arial", 22, QFont.Weight.Bold))
+        title.setFont(QFont("Microsoft YaHei UI", 22, QFont.Weight.Bold))
         title.setStyleSheet(f"color: {TEXT_PRIMARY};")
         layout.addWidget(title)
 
@@ -207,7 +207,7 @@ class DiaryPage(QWidget):
                 font-size: 13px;
                 font-weight: bold;
             }}
-            QPushButton:hover {{ background-color: #FF4444; }}
+            QPushButton:hover {{ background-color: #F37A90; }}
         """)
         btn_save.clicked.connect(self._on_save)
         form_layout.addRow(btn_save)
@@ -216,7 +216,7 @@ class DiaryPage(QWidget):
 
         # === Diary list ===
         list_label = QLabel(tr("Diary History"))
-        list_label.setFont(QFont("Arial", 14, QFont.Weight.Bold))
+        list_label.setFont(QFont("Microsoft YaHei UI", 14, QFont.Weight.Bold))
         list_label.setStyleSheet(f"color: {TEXT_PRIMARY};")
         layout.addWidget(list_label)
 
@@ -240,7 +240,7 @@ class DiaryPage(QWidget):
 
     def _load_data(self):
         try:
-            from backend.services.diary_service import DiaryService
+            from frontend.services.diary_service import DiaryService
             svc = DiaryService()
             self._diaries = svc.get_diaries()
         except Exception:
@@ -280,14 +280,14 @@ class DiaryPage(QWidget):
         }
 
         try:
-            from backend.services.diary_service import DiaryService
+            from frontend.services.diary_service import DiaryService
             svc = DiaryService()
             svc.add_diary(data)
-        except Exception:
-            pass
+        except Exception as e:
+            QMessageBox.warning(self, tr("Error"), tr("Failed to save diary") + f": {e}")
+            return
 
-        self._diaries.insert(0, data)
-        self._refresh_list()
+        self._load_data()
 
         self.best_op.clear()
         self.worst_op.clear()

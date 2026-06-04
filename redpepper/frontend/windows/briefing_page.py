@@ -16,11 +16,11 @@ BG_DARK = "#0D0D1A"
 BG_CARD = "#1A1A2E"
 TEXT_PRIMARY = "#E8E8F0"
 TEXT_SECONDARY = "#7A7A9E"
-BRAND_RED = "#E62E2E"
+BRAND_RED = "#F05C77"
 ACCENT_PURPLE = "#8B5CF6"
-PROFIT_RED = "#EF4444"
-LOSS_GREEN = "#22C55E"
-BORDER_COLOR = "#8B5CF633"
+PROFIT_RED = "#F05C77"
+LOSS_GREEN = "#8B6FD6"
+BORDER_COLOR = "#338B5CF6"
 
 TABLE_STYLE = f"""
     QTableWidget {{
@@ -35,7 +35,7 @@ TABLE_STYLE = f"""
         border-bottom: 1px solid {BORDER_COLOR};
     }}
     QTableWidget::item:selected {{
-        background-color: #E62E2E44;
+        background-color: #44F05C77;
     }}
     QHeaderView::section {{
         background-color: #2A2A3E;
@@ -109,7 +109,7 @@ class BriefingPage(QWidget):
 
         # Title
         title = QLabel(tr("Daily Briefing"))
-        title.setFont(QFont("Arial", 22, QFont.Weight.Bold))
+        title.setFont(QFont("Microsoft YaHei UI", 22, QFont.Weight.Bold))
         title.setStyleSheet(f"color: {TEXT_PRIMARY};")
         layout.addWidget(title)
 
@@ -146,7 +146,7 @@ class BriefingPage(QWidget):
 
         # History table
         history_label = QLabel(tr("History"))
-        history_label.setFont(QFont("Arial", 14, QFont.Weight.Bold))
+        history_label.setFont(QFont("Microsoft YaHei UI", 14, QFont.Weight.Bold))
         history_label.setStyleSheet(f"color: {TEXT_PRIMARY};")
         left_layout.addWidget(history_label)
 
@@ -219,7 +219,7 @@ class BriefingPage(QWidget):
                 font-size: 13px;
                 font-weight: bold;
             }}
-            QPushButton:hover {{ background-color: #FF4444; }}
+            QPushButton:hover {{ background-color: #F37A90; }}
         """)
         btn_save.clicked.connect(self._on_save_briefing)
         entry_layout.addRow(btn_save)
@@ -284,7 +284,7 @@ class BriefingPage(QWidget):
 
     def _load_data(self):
         try:
-            from backend.services.briefing_service import BriefingService
+            from frontend.services.briefing_service import BriefingService
             svc = BriefingService()
             self._briefings = svc.get_briefings()
             self._events = svc.get_events()
@@ -346,14 +346,14 @@ class BriefingPage(QWidget):
         }
 
         try:
-            from backend.services.briefing_service import BriefingService
+            from frontend.services.briefing_service import BriefingService
             svc = BriefingService()
             svc.add_briefing(data)
-        except Exception:
-            pass
+        except Exception as e:
+            QMessageBox.warning(self, tr("Error"), tr("Failed to save briefing") + f": {e}")
+            return
 
-        self._briefings.insert(0, data)
-        self._refresh_history()
+        self._load_data()
 
         self.entry_title.clear()
         self.entry_overseas.clear()
@@ -371,12 +371,12 @@ class BriefingPage(QWidget):
         }
 
         try:
-            from backend.services.briefing_service import BriefingService
+            from frontend.services.briefing_service import BriefingService
             svc = BriefingService()
             svc.add_event(data)
-        except Exception:
-            pass
+        except Exception as e:
+            QMessageBox.warning(self, tr("Error"), tr("Failed to save briefing") + f": {e}")
+            return
 
-        self._events.append(data)
-        self._refresh_events()
+        self._load_data()
         self.event_title.clear()

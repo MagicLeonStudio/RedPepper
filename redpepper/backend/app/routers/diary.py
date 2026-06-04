@@ -5,9 +5,9 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.dependencies import get_db
-from app.models import Diary
-from app.schemas import DiaryCreate, DiaryResponse, DiaryUpdate
+from backend.app.dependencies import get_db
+from backend.app.models import Diary
+from backend.app.schemas import DiaryCreate, DiaryResponse, DiaryUpdate
 
 router = APIRouter()
 

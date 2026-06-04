@@ -4,9 +4,10 @@ from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,
     QPushButton, QStackedWidget, QLabel, QFrame, QStatusBar
 )
-from PyQt6.QtCore import Qt, pyqtSignal, QTimer
-from PyQt6.QtGui import QFont
+from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtGui import QFont, QIcon, QPixmap
 
+from frontend.app_meta import APP_VERSION, full_logo_path, logo_icon_path
 from frontend.i18n.translator import tr
 from frontend.widgets.language_switcher import LanguageSwitcher
 from frontend.windows.dashboard_page import DashboardPage
@@ -23,9 +24,9 @@ BG_DARK = "#0D0D1A"
 BG_CARD = "#1A1A2E"
 TEXT_PRIMARY = "#E8E8F0"
 TEXT_SECONDARY = "#7A7A9E"
-BRAND_RED = "#E62E2E"
+BRAND_RED = "#F05C77"
 ACCENT_PURPLE = "#8B5CF6"
-BORDER_COLOR = "#8B5CF633"
+BORDER_COLOR = "#338B5CF6"
 
 
 class NavButton(QPushButton):
@@ -58,7 +59,7 @@ class NavButton(QPushButton):
                     text-align: left;
                 }}
                 QPushButton:hover {{
-                    background-color: #FF4444;
+                    background-color: #F37A90;
                 }}
             """)
         else:
@@ -83,8 +84,11 @@ class MainWindow(QMainWindow):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle(tr("RedPepper - Investment Assistant"))
+        self.setWindowTitle(tr("app_title"))
         self.resize(1200, 800)
+        icon_path = logo_icon_path()
+        if icon_path.exists():
+            self.setWindowIcon(QIcon(str(icon_path)))
 
         self._nav_buttons = []
         self._pages = {}
@@ -112,14 +116,14 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.stack, 1)
 
         # Create pages
-        self._add_page("dashboard", DashboardPage(), "📊", tr("Overview"))
-        self._add_page("portfolio", PortfolioPage(), "📈", tr("Portfolio"))
-        self._add_page("watchlist", WatchlistPage(), "👁", tr("Watchlist"))
-        self._add_page("trade_log", TradeLogPage(), "📝", tr("Trade Log"))
-        self._add_page("briefing", BriefingPage(), "📰", tr("Daily Briefing"))
-        self._add_page("diary", DiaryPage(), "📔", tr("Diary"))
-        self._add_page("knowledge", KnowledgePage(), "📚", tr("Knowledge"))
-        self._add_page("settings", SettingsPage(), "⚙", tr("Settings"))
+        self._add_page("dashboard", DashboardPage(), "📊", tr("nav.dashboard"))
+        self._add_page("portfolio", PortfolioPage(), "📈", tr("nav.portfolio"))
+        self._add_page("watchlist", WatchlistPage(), "👁", tr("nav.watchlist"))
+        self._add_page("trade_log", TradeLogPage(), "📝", tr("nav.trade_log"))
+        self._add_page("briefing", BriefingPage(), "📰", tr("nav.briefing"))
+        self._add_page("diary", DiaryPage(), "📔", tr("nav.diary"))
+        self._add_page("knowledge", KnowledgePage(), "📚", tr("nav.knowledge"))
+        self._add_page("settings", SettingsPage(), "⚙", tr("nav.settings"))
 
         # === Status Bar ===
         self.status_bar = QStatusBar()
@@ -131,7 +135,7 @@ class MainWindow(QMainWindow):
                 border-top: 1px solid {BORDER_COLOR};
             }}
         """)
-        self._status_label = QLabel(tr("Backend: Connecting..."))
+        self._status_label = QLabel(tr("status.backend_connecting"))
         self.status_bar.addWidget(self._status_label)
 
     def _build_sidebar(self) -> QWidget:
@@ -150,23 +154,35 @@ class MainWindow(QMainWindow):
         layout.setSpacing(8)
 
         # Logo area
-        logo_label = QLabel("🌶️ RedPepper")
-        logo_label.setFont(QFont("Arial", 16, QFont.Weight.Bold))
-        logo_label.setStyleSheet(f"color: {BRAND_RED}; padding: 8px;")
+        logo_label = QLabel()
+        logo_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        logo_path = full_logo_path()
+        if logo_path.exists():
+            pixmap = QPixmap(str(logo_path)).scaled(
+                140,
+                64,
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
+            )
+            logo_label.setPixmap(pixmap)
+        else:
+            logo_label.setText("RedPepper")
+            logo_label.setFont(QFont("Microsoft YaHei UI", 16, QFont.Weight.Bold))
+            logo_label.setStyleSheet(f"color: {BRAND_RED}; padding: 8px;")
         layout.addWidget(logo_label)
 
         layout.addSpacing(12)
 
         # Nav items
         nav_items = [
-            ("📊", tr("Overview")),
-            ("📈", tr("Portfolio")),
-            ("👁", tr("Watchlist")),
-            ("📝", tr("Trade Log")),
-            ("📰", tr("Daily Briefing")),
-            ("📔", tr("Diary")),
-            ("📚", tr("Knowledge")),
-            ("⚙", tr("Settings")),
+            ("📊", tr("nav.dashboard")),
+            ("📈", tr("nav.portfolio")),
+            ("👁", tr("nav.watchlist")),
+            ("📝", tr("nav.trade_log")),
+            ("📰", tr("nav.briefing")),
+            ("📔", tr("nav.diary")),
+            ("📚", tr("nav.knowledge")),
+            ("⚙", tr("nav.settings")),
         ]
 
         for idx, (icon, text) in enumerate(nav_items):
@@ -182,7 +198,7 @@ class MainWindow(QMainWindow):
         lang_switcher.locale_changed.connect(self._on_locale_changed)
         layout.addWidget(lang_switcher)
 
-        version_label = QLabel("v1.0.0")
+        version_label = QLabel(APP_VERSION)
         version_label.setStyleSheet(f"color: {TEXT_SECONDARY}; font-size: 10px;")
         version_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(version_label)
@@ -202,8 +218,15 @@ class MainWindow(QMainWindow):
 
     def _on_locale_changed(self, locale: str):
         """Handle language change."""
-        # Reload UI text - in a real app, retranslateUi would be called
-        pass
+        current_index = self.stack.currentIndex()
+        replacement = MainWindow()
+        replacement._select_page(current_index)
+        replacement.show()
+
+        from PyQt6.QtWidgets import QApplication
+
+        QApplication.instance()._redpepper_main_window = replacement
+        self.close()
 
     def _setup_status_check(self):
         """Setup periodic backend status check."""
@@ -216,19 +239,17 @@ class MainWindow(QMainWindow):
         """Check if backend is running."""
         try:
             import urllib.request
-            import urllib.error
             req = urllib.request.Request(
-                "http://127.0.0.1:8000/health",
+                "http://127.0.0.1:8000/api/health",
                 method="GET",
-                timeout=3
             )
-            with urllib.request.urlopen(req) as resp:
+            with urllib.request.urlopen(req, timeout=3) as resp:
                 if resp.status == 200:
-                    self._status_label.setText(tr("Backend: Connected"))
-                    self._status_label.setStyleSheet("color: #22C55E;")
+                    self._status_label.setText(tr("status.backend_connected"))
+                    self._status_label.setStyleSheet("color: #8B6FD6;")
                 else:
-                    self._status_label.setText(tr("Backend: Error"))
-                    self._status_label.setStyleSheet("color: #EF4444;")
+                    self._status_label.setText(tr("status.backend_error"))
+                    self._status_label.setStyleSheet("color: #F05C77;")
         except Exception:
-            self._status_label.setText(tr("Backend: Disconnected"))
-            self._status_label.setStyleSheet("color: #EF4444;")
+            self._status_label.setText(tr("status.backend_disconnected"))
+            self._status_label.setStyleSheet("color: #F05C77;")

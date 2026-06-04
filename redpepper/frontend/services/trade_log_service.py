@@ -1,5 +1,7 @@
 from .api_client import APIClient, get_client
 
+import base64
+
 
 class TradeLogService:
     def __init__(self, client: APIClient = None):
@@ -12,13 +14,32 @@ class TradeLogService:
             params["name"] = name
         if action:
             params["action"] = action
-        return self.client.get(self.base_path, params=params or None)
+        result = self.client.get(f"{self.base_path}/", params=params or None)
+        return [self._normalize_item(item) for item in result]
 
     def create(self, data: dict) -> dict:
-        return self.client.post(self.base_path, json=data)
+        payload = self._to_api_payload(data)
+        item = self.client.post(f"{self.base_path}/", json=payload)
+        return self._normalize_item(item)
 
     def delete(self, log_id: int) -> None:
         self.client.delete(f"{self.base_path}/{log_id}")
+
+    def ocr_image(self, image_base64: str) -> dict:
+        return self.client.post(f"{self.base_path}/ocr", json={"image_base64": image_base64})
+
+    def import_from_screenshot(self, file_path: str) -> list[dict]:
+        with open(file_path, "rb") as fh:
+            image_base64 = base64.b64encode(fh.read()).decode("utf-8")
+
+        result = self.ocr_image(image_base64)
+        created_items: list[dict] = []
+        for item in result.get("items", []):
+            created_items.append(self.create(item))
+        return created_items
+
+    def import_from_csv(self, file_path: str) -> dict:
+        return self.client.post(f"{self.base_path}/import-csv", json={"file_path": file_path})
 
     # ---- Aliases for frontend page compatibility ----
 
@@ -29,3 +50,15 @@ class TradeLogService:
     def add_trade_log(self, data: dict) -> dict:
         """Alias for create."""
         return self.create(data)
+
+    def _normalize_item(self, item: dict) -> dict:
+        normalized = dict(item)
+        normalized["target"] = normalized.get("name", "") or normalized.get("code", "")
+        return normalized
+
+    def _to_api_payload(self, data: dict) -> dict:
+        payload = dict(data)
+        target = payload.pop("target", "")
+        payload.setdefault("name", target)
+        payload.setdefault("code", "")
+        return payload

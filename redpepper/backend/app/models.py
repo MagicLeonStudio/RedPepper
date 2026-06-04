@@ -18,7 +18,7 @@ from sqlalchemy import (
     func,
 )
 
-from app.database import Base
+from backend.app.database import Base
 
 
 # ---------------------------------------------------------------------------
@@ -58,8 +58,12 @@ class Portfolio(Base):
     current_price = Column(Float, nullable=True)
     shares = Column(Integer, nullable=True)
     account = Column(String(50), default="中信", nullable=False)
+    status = Column(String(20), default="持有中", nullable=False)
     reason = Column(Text, nullable=True)
     target = Column(String(200), nullable=True)
+    group_name = Column(String(50), nullable=True)
+    group_color = Column(String(16), nullable=True)
+    group_order = Column(Integer, default=999, nullable=False)
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
     updated_at = Column(
         DateTime,
@@ -87,6 +91,9 @@ class Watchlist(Base):
     trigger_condition = Column(String(200), nullable=True)
     rating = Column(String(20), default="⭐⭐⭐", nullable=False)
     status = Column(String(20), default="观察", nullable=False)
+    group_name = Column(String(50), nullable=True)
+    group_color = Column(String(16), nullable=True)
+    group_order = Column(Integer, default=999, nullable=False)
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
     updated_at = Column(
         DateTime,

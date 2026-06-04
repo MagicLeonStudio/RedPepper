@@ -2,13 +2,33 @@
 
 from __future__ import annotations
 
+import base64
+import binascii
+
 from openai import AsyncOpenAI
 
-from app.ai.base import AIProvider
+from backend.app.ai.base import AIProvider
 
 
 class DeepSeekProvider(AIProvider):
     """AI provider for DeepSeek API (OpenAI-compatible)."""
+
+    @staticmethod
+    def _detect_image_mime(image_base64: str) -> str:
+        try:
+            header = base64.b64decode(image_base64[:128], validate=False)
+        except (ValueError, binascii.Error):
+            return "image/png"
+
+        if header.startswith(b"\xff\xd8\xff"):
+            return "image/jpeg"
+        if header.startswith(b"\x89PNG\r\n\x1a\n"):
+            return "image/png"
+        if header.startswith(b"GIF87a") or header.startswith(b"GIF89a"):
+            return "image/gif"
+        if header.startswith(b"RIFF") and b"WEBP" in header[:16]:
+            return "image/webp"
+        return "image/png"
 
     def __init__(self, api_key: str, base_url: str) -> None:
         self.api_key = api_key
@@ -45,6 +65,7 @@ class DeepSeekProvider(AIProvider):
         # Ensure base64 does not contain the data URL prefix
         if image_base64.startswith("data:"):
             image_base64 = image_base64.split(",", 1)[1]
+        image_mime = self._detect_image_mime(image_base64)
 
         messages = [
             {
@@ -54,7 +75,7 @@ class DeepSeekProvider(AIProvider):
                     {
                         "type": "image_url",
                         "image_url": {
-                            "url": f"data:image/png;base64,{image_base64}",
+                            "url": f"data:{image_mime};base64,{image_base64}",
                         },
                     },
                 ],
@@ -63,6 +84,7 @@ class DeepSeekProvider(AIProvider):
         response = await self.client.chat.completions.create(
             model=model,
             messages=messages,
+            timeout=90.0,
         )
         return response.choices[0].message.content or ""
 

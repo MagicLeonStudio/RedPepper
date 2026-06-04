@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/logo.png" alt="RedPepper Logo" width="80">
+  <img src="assets/logo-icon.png" alt="RedPepper Logo Icon" width="80">
 </p>
 
 <h1 align="center">RedPepper 开发环境配置指南</h1>
@@ -905,7 +905,8 @@ redpepper/                          # 项目根目录
 │   └── test_gui.py                 # GUI 测试（pytest-qt）
 │
 ├── assets/                         # 项目资产文件
-│   ├── logo.png                    # 应用 Logo（PNG 格式）
+│   ├── logo.png                    # 登录页 / 首页完整 Logo
+│   ├── logo-icon.png               # 软件缩略图标
 │   ├── logo.ico                    # Windows 图标
 │   ├── logo.icns                   # macOS 图标
 │   └── screenshots/                # 文档用截图

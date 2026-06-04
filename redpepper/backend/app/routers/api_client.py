@@ -26,8 +26,8 @@ class APIClient:
         return self._client
 
     def _build_timeout(self, path: str | None = None) -> httpx.Timeout:
-        if path and ("/ocr" in path or "/import-csv" in path or "/import-items" in path):
-            return httpx.Timeout(connect=5.0, read=900.0, write=90.0, pool=60.0)
+        if path and ("/ocr" in path or "/import-csv" in path):
+            return httpx.Timeout(connect=5.0, read=600.0, write=60.0, pool=30.0)
         return httpx.Timeout(connect=5.0, read=max(self.timeout, 30.0), write=30.0, pool=30.0)
 
     def close(self) -> None:
@@ -45,10 +45,7 @@ class APIClient:
         url = f"{self.base_url}{path}"
         client = self._get_client()
         kwargs.setdefault("timeout", self._build_timeout(path))
-        try:
-            response = client.request(method, url, **kwargs)
-        except httpx.TimeoutException as exc:
-            raise RuntimeError(f"Request timed out for {method} {path}. Please retry.") from exc
+        response = client.request(method, url, **kwargs)
         try:
             response.raise_for_status()
         except httpx.HTTPStatusError as exc:

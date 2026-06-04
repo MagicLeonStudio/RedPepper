@@ -5,8 +5,8 @@ from __future__ import annotations
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.database import init_db
-from app.routers import (
+from backend.app.database import init_db
+from backend.app.routers import (
     auth,
     briefing,
     data_manager,
@@ -22,7 +22,7 @@ from app.routers import (
 # ------------------------------------------------------------------ #
 app = FastAPI(
     title="RedPepper API",
-    version="0.1.0",
+    version="0.0.3",
     description="Backend API for the RedPepper investment management system.",
 )
 

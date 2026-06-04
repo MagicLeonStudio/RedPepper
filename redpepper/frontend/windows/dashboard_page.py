@@ -15,11 +15,11 @@ BG_DARK = "#0D0D1A"
 BG_CARD = "#1A1A2E"
 TEXT_PRIMARY = "#E8E8F0"
 TEXT_SECONDARY = "#7A7A9E"
-BRAND_RED = "#E62E2E"
+BRAND_RED = "#F05C77"
 ACCENT_PURPLE = "#8B5CF6"
-PROFIT_RED = "#EF4444"
-LOSS_GREEN = "#22C55E"
-BORDER_COLOR = "#8B5CF633"
+PROFIT_RED = "#F05C77"
+LOSS_GREEN = "#8B6FD6"
+BORDER_COLOR = "#338B5CF6"
 
 
 class StatCard(QGroupBox):
@@ -37,12 +37,14 @@ class StatCard(QGroupBox):
                 color: {TEXT_SECONDARY};
                 font-size: 12px;
                 font-weight: bold;
-                margin-top: 8px;
+                margin-top: 18px;
             }}
             QGroupBox::title {{
                 subcontrol-origin: margin;
-                left: 8px;
-                padding: 0 4px;
+                subcontrol-position: top left;
+                top: 1px;
+                left: 10px;
+                padding: 2px 6px;
             }}
         """)
 
@@ -50,10 +52,11 @@ class StatCard(QGroupBox):
         layout.setContentsMargins(16, 12, 16, 12)
 
         self.value_label = QLabel(value)
-        self.value_label.setFont(QFont("Arial", 28, QFont.Weight.Bold))
+        self.value_label.setFont(QFont("Microsoft YaHei UI", 22, QFont.Weight.Bold))
         color = PROFIT_RED if is_profit else LOSS_GREEN
         self.value_label.setStyleSheet(f"color: {color};")
         self.value_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.value_label.setMinimumHeight(36)
         layout.addWidget(self.value_label)
 
         if subtitle:
@@ -78,8 +81,8 @@ class DashboardPage(QWidget):
         layout.setSpacing(20)
 
         # Page title
-        title = QLabel(tr("Dashboard"))
-        title.setFont(QFont("Arial", 22, QFont.Weight.Bold))
+        title = QLabel(tr("dashboard.title"))
+        title.setFont(QFont("Microsoft YaHei UI", 22, QFont.Weight.Bold))
         title.setStyleSheet(f"color: {TEXT_PRIMARY};")
         layout.addWidget(title)
 
@@ -87,13 +90,13 @@ class DashboardPage(QWidget):
         row1 = QHBoxLayout()
         row1.setSpacing(16)
 
-        self.total_assets_card = StatCard(tr("Total Assets"), "¥0.00", "")
+        self.total_assets_card = StatCard(tr("dashboard.total_assets"), "¥0.00", "")
         row1.addWidget(self.total_assets_card, 1)
 
-        self.total_return_card = StatCard(tr("Total Return"), "+¥0.00", "", is_profit=True)
+        self.total_return_card = StatCard(tr("dashboard.total_profit"), "+¥0.00", "", is_profit=True)
         row1.addWidget(self.total_return_card, 1)
 
-        self.today_return_card = StatCard(tr("Today Return"), "+¥0.00", "", is_profit=True)
+        self.today_return_card = StatCard(tr("dashboard.today_profit"), "+¥0.00", "", is_profit=True)
         row1.addWidget(self.today_return_card, 1)
 
         layout.addLayout(row1)
@@ -103,7 +106,7 @@ class DashboardPage(QWidget):
         row2.setSpacing(16)
 
         # Account structure card
-        account_box = QGroupBox(tr("Account Structure"))
+        account_box = QGroupBox(tr("dashboard.account_structure"))
         account_box.setStyleSheet(f"""
             QGroupBox {{
                 background-color: {BG_CARD};
@@ -113,12 +116,14 @@ class DashboardPage(QWidget):
                 color: {TEXT_SECONDARY};
                 font-size: 12px;
                 font-weight: bold;
-                margin-top: 8px;
+                margin-top: 18px;
             }}
             QGroupBox::title {{
                 subcontrol-origin: margin;
-                left: 8px;
-                padding: 0 4px;
+                subcontrol-position: top left;
+                top: 1px;
+                left: 10px;
+                padding: 2px 6px;
             }}
             QLabel {{
                 color: {TEXT_PRIMARY};
@@ -134,7 +139,7 @@ class DashboardPage(QWidget):
         row2.addWidget(account_box, 1)
 
         # Core holdings card
-        holdings_box = QGroupBox(tr("Core Holdings (TOP3)"))
+        holdings_box = QGroupBox(f"{tr('dashboard.core_holdings')} (TOP3)")
         holdings_box.setStyleSheet(f"""
             QGroupBox {{
                 background-color: {BG_CARD};
@@ -144,12 +149,14 @@ class DashboardPage(QWidget):
                 color: {TEXT_SECONDARY};
                 font-size: 12px;
                 font-weight: bold;
-                margin-top: 8px;
+                margin-top: 18px;
             }}
             QGroupBox::title {{
                 subcontrol-origin: margin;
-                left: 8px;
-                padding: 0 4px;
+                subcontrol-position: top left;
+                top: 1px;
+                left: 10px;
+                padding: 2px 6px;
             }}
             QLabel {{
                 color: {TEXT_PRIMARY};
@@ -180,10 +187,10 @@ class DashboardPage(QWidget):
         alert_layout.setContentsMargins(12, 8, 12, 8)
 
         alert_icon = QLabel("⚠️")
-        alert_icon.setFont(QFont("Arial", 20))
+        alert_icon.setFont(QFont("Microsoft YaHei UI", 20))
         alert_layout.addWidget(alert_icon)
 
-        self.alert_text = QLabel(tr("High concentration detected in your portfolio. Consider diversifying."))
+        self.alert_text = QLabel(tr("dashboard.concentration_warning"))
         self.alert_text.setStyleSheet(f"color: {PROFIT_RED}; font-size: 13px;")
         alert_layout.addWidget(self.alert_text, 1)
 
@@ -207,7 +214,7 @@ class DashboardPage(QWidget):
         layout.addWidget(self.alert_frame)
 
         # === Quick Actions ===
-        actions_box = QGroupBox(tr("Quick Actions"))
+        actions_box = QGroupBox(tr("dashboard.quick_actions"))
         actions_box.setStyleSheet(f"""
             QGroupBox {{
                 background-color: {BG_CARD};
@@ -217,18 +224,20 @@ class DashboardPage(QWidget):
                 color: {TEXT_SECONDARY};
                 font-size: 12px;
                 font-weight: bold;
-                margin-top: 8px;
+                margin-top: 18px;
             }}
             QGroupBox::title {{
                 subcontrol-origin: margin;
-                left: 8px;
-                padding: 0 4px;
+                subcontrol-position: top left;
+                top: 1px;
+                left: 10px;
+                padding: 2px 6px;
             }}
         """)
         actions_layout = QHBoxLayout(actions_box)
         actions_layout.setContentsMargins(12, 8, 12, 8)
 
-        btn_view = QPushButton("📈 " + tr("View Portfolio"))
+        btn_view = QPushButton("📈 " + tr("dashboard.view_portfolio"))
         btn_view.setStyleSheet(f"""
             QPushButton {{
                 background-color: {BRAND_RED};
@@ -239,12 +248,12 @@ class DashboardPage(QWidget):
                 font-size: 13px;
             }}
             QPushButton:hover {{
-                background-color: #FF4444;
+                background-color: #F37A90;
             }}
         """)
         actions_layout.addWidget(btn_view)
 
-        btn_check = QPushButton("🔍 " + tr("Trade Check"))
+        btn_check = QPushButton("🔍 " + tr("dashboard.trade_check"))
         btn_check.setStyleSheet(f"""
             QPushButton {{
                 background-color: #2A2A3E;
@@ -267,13 +276,13 @@ class DashboardPage(QWidget):
     def _load_data(self):
         """Load dashboard data from services."""
         try:
-            from backend.services.portfolio_service import PortfolioService
+            from frontend.services.portfolio_service import PortfolioService
             svc = PortfolioService()
             summary = svc.get_summary()
 
-            total = summary.get("total_assets", 0)
-            ret = summary.get("total_return", 0)
-            today = summary.get("today_return", 0)
+            total = float(summary.get("total_assets") or 0)
+            ret = float(summary.get("total_return") or 0)
+            today = float(summary.get("today_return") or 0)
 
             self.total_assets_card.value_label.setText(f"¥{total:,.2f}")
 
@@ -297,7 +306,7 @@ class DashboardPage(QWidget):
 
             for acct in accounts:
                 name = acct.get("name", "")
-                amount = acct.get("amount", 0)
+                amount = float(acct.get("amount") or 0)
                 pct = (amount / total_for_calc) * 100
 
                 row = QHBoxLayout()
@@ -343,7 +352,7 @@ class DashboardPage(QWidget):
             for h in holdings[:3]:
                 name = h.get("name", "")
                 code = h.get("code", "")
-                ret_pct = h.get("return_pct", 0)
+                ret_pct = float(h.get("return_pct") or 0)
                 color = PROFIT_RED if ret_pct >= 0 else LOSS_GREEN
                 sign = "+" if ret_pct >= 0 else ""
 
@@ -365,9 +374,7 @@ class DashboardPage(QWidget):
             max_pct = summary.get("max_concentration_pct", 0)
             if max_pct > 50:
                 self.alert_frame.show()
-                self.alert_text.setText(
-                    tr("High concentration detected: one position is") + f" {max_pct:.1f}% " + tr("of portfolio. Consider diversifying.")
-                )
+                self.alert_text.setText(tr("dashboard.concentration_warning_pct", pct=f"{max_pct:.1f}"))
 
         except Exception:
             # Use demo data if backend unavailable
@@ -378,9 +385,9 @@ class DashboardPage(QWidget):
             self.today_return_card.value_label.setStyleSheet(f"color: {PROFIT_RED};")
 
             demo_accounts = [
-                (tr("Stock Account"), 85400),
-                (tr("Fund Account"), 32050),
-                (tr("Cash"), 11000),
+                (tr("dashboard.stock_etf"), 85400),
+                (tr("dashboard.fund"), 32050),
+                (tr("common.account"), 11000),
             ]
             for name, amount in demo_accounts:
                 row = QHBoxLayout()

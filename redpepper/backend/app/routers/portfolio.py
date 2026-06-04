@@ -2,13 +2,36 @@
 
 from __future__ import annotations
 
+import asyncio
+import csv
+import hashlib
+import json
+import re
+from io import StringIO
+from typing import Any
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
-from app.dependencies import get_db
-from app.models import Portfolio
-from app.schemas import (
+from backend.app.ai.ocr_utils import (
+    coerce_float,
+    coerce_int,
+    crop_image_base64,
+    decode_image,
+    extract_json_block,
+    resolve_ocr_providers,
+    run_json_ocr,
+    slice_image_base64,
+)
+from backend.app.ai.factory import get_provider
+from backend.app.config import settings
+from backend.app.dependencies import get_db
+from backend.app.models import Portfolio, Watchlist
+from backend.app.schemas import (
     AccountBreakdown,
+    OCRHolding,
+    OCRRequest,
+    OCRResponse,
     PortfolioCreate,
     PortfolioResponse,
     PortfolioSummary,
@@ -18,6 +41,1167 @@ from app.schemas import (
 )
 
 router = APIRouter()
+_GROUP_COLOR_PALETTE = [
+    "#44F05C77",
+    "#448B5CF6",
+    "#443B82F6",
+    "#4414B8A6",
+    "#44F59E0B",
+    "#44EF4444",
+    "#44EC4899",
+    "#446366F1",
+    "#4484CC16",
+    "#440EA5E9",
+]
+_DEFAULT_GROUP_ORDER = 999
+_SECURITY_CODE_RE = re.compile(r"(?<!\d)(\d{6})(?!\d)")
+_NAME_RE = re.compile(r"[A-Za-z\u4e00-\u9fa5][A-Za-z0-9\u4e00-\u9fa5]{1,30}")
+_NUMBER_RE = re.compile(r"^-?\d[\d,]*(?:\.\d+)?$")
+
+
+def _clean_text(value: object, *, default: str = "", max_length: int | None = None) -> str:
+    text = str(value or "").strip()
+    if not text:
+        text = default
+    if max_length is not None:
+        text = text[:max_length]
+    return text
+
+
+def _normalize_portfolio_type(value: object) -> str:
+    text = _clean_text(value, default="ETF", max_length=20).lower()
+    if text in {"股票", "stock"}:
+        return "股票"
+    if text in {"基金", "fund"}:
+        return "基金"
+    return "ETF"
+
+
+def _normalize_portfolio_status(value: object) -> str:
+    text = _clean_text(value, default="持有中", max_length=20).lower()
+    mapping = {
+        "holding": "持有中",
+        "持有": "持有中",
+        "持有中": "持有中",
+        "active": "持有中",
+        "reduced": "减仓中",
+        "减仓": "减仓中",
+        "减仓中": "减仓中",
+        "trimmed": "减仓中",
+        "closed": "已清仓",
+        "清仓": "已清仓",
+        "已清仓": "已清仓",
+        "sold": "已清仓",
+    }
+    return mapping.get(text, _clean_text(value, default="持有中", max_length=20))
+
+
+def _normalize_group_name(value: object) -> str | None:
+    text = _clean_text(value, max_length=50)
+    return text or None
+
+
+def _normalize_group_color(value: object) -> str | None:
+    text = _clean_text(value, max_length=16)
+    if not text.startswith("#"):
+        return None
+    if len(text) not in {7, 9}:
+        return None
+    return text.upper()
+
+
+def _group_color_for_name(group_name: str) -> str:
+    digest = hashlib.md5(group_name.encode("utf-8")).digest()
+    index = digest[0] % len(_GROUP_COLOR_PALETTE)
+    return _GROUP_COLOR_PALETTE[index]
+
+
+def _normalize_group_order(value: object) -> int:
+    try:
+        return max(0, min(int(value), _DEFAULT_GROUP_ORDER))
+    except Exception:
+        return _DEFAULT_GROUP_ORDER
+
+
+def _derive_group_fields(
+    *,
+    group_name: object,
+    group_color: object,
+    group_order: object,
+) -> tuple[str | None, str | None, int]:
+    normalized_name = _normalize_group_name(group_name)
+    if not normalized_name:
+        return None, None, _DEFAULT_GROUP_ORDER
+    normalized_color = _normalize_group_color(group_color) or _group_color_for_name(normalized_name)
+    normalized_order = _normalize_group_order(group_order)
+    return normalized_name, normalized_color, normalized_order
+
+
+def _watchlist_status_from_portfolio_status(portfolio_status: str) -> str:
+    mapping = {
+        "持有中": "已买入",
+        "减仓中": "已买入",
+        "已清仓": "归档",
+    }
+    return mapping.get(portfolio_status, "观察")
+
+
+def _fallback_group_name(item: Portfolio, candidates: list[str] | None = None) -> str:
+    ptype = _normalize_portfolio_type(getattr(item, "type", "ETF"))
+    text = " ".join(
+        [
+            str(getattr(item, "sector", "") or ""),
+            str(getattr(item, "name", "") or ""),
+            str(getattr(item, "reason", "") or ""),
+            str(getattr(item, "target", "") or ""),
+            ptype,
+        ]
+    ).lower()
+
+    if candidates:
+        for candidate in candidates:
+            if candidate.lower() in text:
+                return candidate
+        return candidates[0]
+
+    if ptype == "基金":
+        return "基金配置"
+    if "etf" in text or ptype == "ETF":
+        return "指数ETF"
+    if any(token in text for token in ("芯", "半导体", "算力", "ai", "智能", "机器人", "gpu")):
+        return "科技成长"
+    if any(token in text for token in ("电力", "能源", "煤", "油", "光伏", "风电")):
+        return "能源公用"
+    if any(token in text for token in ("医药", "医疗", "创新药", "器械")):
+        return "医药健康"
+    if any(token in text for token in ("银行", "保险", "券商", "金融")):
+        return "金融红利"
+    return "核心持仓"
+
+
+def _sync_watchlist_from_portfolio_item(db: Session, item: Portfolio) -> None:
+    code = _clean_text(getattr(item, "code", ""), max_length=20)
+    name = _clean_text(getattr(item, "name", ""), max_length=100)
+    if not code or not name:
+        return
+
+    ptype = _normalize_portfolio_type(getattr(item, "type", "ETF"))
+    portfolio_status = _normalize_portfolio_status(getattr(item, "status", "持有中"))
+    watch_status = _watchlist_status_from_portfolio_status(portfolio_status)
+
+    watch_item = db.query(Watchlist).filter(Watchlist.code == code).first()
+    if watch_item is None:
+        watch_item = Watchlist(
+            code=code,
+            name=name,
+            type=ptype,
+            sector=_clean_text(getattr(item, "sector", ""), max_length=50) or None,
+            reason=_clean_text(getattr(item, "reason", "")) or "来自持仓同步",
+            trigger_condition=None,
+            rating="⭐⭐⭐",
+            status=watch_status,
+            group_name=_normalize_group_name(getattr(item, "group_name", None)),
+            group_color=_normalize_group_color(getattr(item, "group_color", None)),
+            group_order=_normalize_group_order(getattr(item, "group_order", _DEFAULT_GROUP_ORDER)),
+        )
+        db.add(watch_item)
+        return
+
+    watch_item.name = name
+    watch_item.type = ptype
+    watch_item.sector = _clean_text(getattr(item, "sector", ""), max_length=50) or watch_item.sector
+    watch_item.status = watch_status
+
+    portfolio_group_name = _normalize_group_name(getattr(item, "group_name", None))
+    if portfolio_group_name:
+        watch_item.group_name = portfolio_group_name
+        watch_item.group_color = _normalize_group_color(getattr(item, "group_color", None)) or _group_color_for_name(
+            portfolio_group_name
+        )
+        watch_item.group_order = _normalize_group_order(getattr(item, "group_order", _DEFAULT_GROUP_ORDER))
+
+
+def _reconcile_watchlist_by_portfolio_codes(db: Session, codes: set[str] | None = None) -> int:
+    query = db.query(Portfolio)
+    if codes:
+        normalized_codes = [code for code in {_clean_text(v, max_length=20) for v in codes} if code]
+        if not normalized_codes:
+            return 0
+        query = query.filter(Portfolio.code.in_(normalized_codes))
+
+    portfolios = query.all()
+    if not portfolios:
+        return 0
+
+    updated = 0
+    for item in portfolios:
+        code = _clean_text(getattr(item, "code", ""), max_length=20)
+        name = _clean_text(getattr(item, "name", ""), max_length=100)
+        if not code or not name:
+            continue
+
+        watch_item = db.query(Watchlist).filter(Watchlist.code == code).first()
+        if watch_item is None:
+            continue
+
+        new_status = _watchlist_status_from_portfolio_status(
+            _normalize_portfolio_status(getattr(item, "status", "持有中"))
+        )
+        changed = False
+        if watch_item.status != new_status:
+            watch_item.status = new_status
+            changed = True
+        if _clean_text(watch_item.name, max_length=100) != name:
+            watch_item.name = name
+            changed = True
+        if changed:
+            updated += 1
+
+    return updated
+
+
+def _require_deepseek_grouping_provider():
+    settings.reload()
+    deepseek_cfg = settings.get("ai.providers.deepseek") or {}
+    deepseek_key = str(deepseek_cfg.get("api_key", "") or "").strip()
+    if not deepseek_key:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="DeepSeek API key is required for smart grouping",
+        )
+    return get_provider("deepseek"), "deepseek-v4-flash"
+
+
+async def _ai_group_portfolio_items(
+    provider,
+    model: str,
+    items: list[Portfolio],
+    candidates: list[str] | None = None,
+) -> tuple[dict[int, str], list[str]]:
+    if not items:
+        return {}, []
+
+    payload = [
+        {
+            "id": item.id,
+            "code": item.code,
+            "name": item.name,
+            "sector": item.sector,
+            "type": item.type,
+            "account": item.account,
+            "reason": item.reason,
+            "target": item.target,
+        }
+        for item in items
+    ]
+
+    if candidates:
+        group_rule = (
+            "你必须只使用给定组名，不允许创建新组。"
+            f"给定组名：{json.dumps(candidates, ensure_ascii=False)}"
+        )
+    else:
+        group_rule = "你可以自动生成 4-8 个有意义的组名，避免过细行业名称。"
+
+    prompt = (
+        "你是A股持仓分组助手。根据持仓条目的名称、类型、行业、账户和备注，对条目进行主题分组。"
+        "目标：分组可用于交易复盘和仓位管理。"
+        "要求：\n"
+        "1) 每个条目都必须分到一个组；\n"
+        "2) 组名短小（2-8字）；\n"
+        "3) 相似主题放在同组；\n"
+        "4) 返回 JSON 对象：{\"groups\": [...], \"items\": [{\"id\":1,\"group_name\":\"...\"}] }；\n"
+        "5) 只返回 JSON，不要解释。\n"
+        f"{group_rule}\n\n"
+        f"输入条目：{json.dumps(payload, ensure_ascii=False)}"
+    )
+
+    assign_map: dict[int, str] = {}
+    groups: list[str] = []
+    try:
+        raw = await asyncio.wait_for(
+            provider.chat(
+                [{"role": "user", "content": prompt}],
+                model=model,
+                temperature=0.4,
+            ),
+            timeout=120,
+        )
+        parsed = json.loads(extract_json_block(raw))
+        if isinstance(parsed, dict):
+            group_values = parsed.get("groups", [])
+            if isinstance(group_values, list):
+                groups = [str(v).strip() for v in group_values if str(v).strip()]
+            rows = parsed.get("items", [])
+        else:
+            rows = parsed if isinstance(parsed, list) else []
+
+        if isinstance(rows, list):
+            for row in rows:
+                if not isinstance(row, dict):
+                    continue
+                row_id = row.get("id")
+                group_name = _normalize_group_name(row.get("group_name", ""))
+                if row_id is None or not group_name:
+                    continue
+                try:
+                    assign_map[int(row_id)] = group_name
+                except Exception:
+                    continue
+    except Exception:
+        assign_map = {}
+        groups = []
+
+    if candidates:
+        allowed = {name.strip() for name in candidates if name.strip()}
+        groups = [name for name in groups if name in allowed]
+
+    for item in items:
+        if item.id in assign_map:
+            if candidates and assign_map[item.id] not in {c.strip() for c in candidates if c.strip()}:
+                assign_map[item.id] = _fallback_group_name(item, candidates)
+            continue
+        assign_map[item.id] = _fallback_group_name(item, candidates)
+
+    if not groups:
+        seen: set[str] = set()
+        for item in items:
+            group_name = assign_map.get(item.id, "核心持仓")
+            if group_name in seen:
+                continue
+            groups.append(group_name)
+            seen.add(group_name)
+
+    return assign_map, groups
+
+
+def _normalize_ocr_item(raw: dict) -> OCRHolding:
+    def _first(*keys: str) -> object:
+        for key in keys:
+            if key in raw and raw.get(key) not in (None, ""):
+                return raw.get(key)
+        return ""
+
+    item_type = _first("type", "asset_type", "security_type", "证券类型") or "ETF"
+    group_name, group_color, group_order = _derive_group_fields(
+        group_name=_first("group_name", "group", "分组"),
+        group_color=_first("group_color", "分组颜色"),
+        group_order=_first("group_order", "分组排序") or _DEFAULT_GROUP_ORDER,
+    )
+    code = _clean_text(_first("code", "security_code", "symbol", "ticker", "证券代码"), max_length=20)
+    if not code:
+        code_match = _SECURITY_CODE_RE.search(str(raw))
+        code = code_match.group(1) if code_match else ""
+
+    name = _clean_text(_first("name", "title", "security_name", "symbol_name", "证券名称"), max_length=100)
+    if not name:
+        name_match = _NAME_RE.search(str(_first("raw", "line", "text", "备注", "说明")))
+        name = name_match.group(0) if name_match else ""
+
+    return OCRHolding(
+        code=code,
+        name=name,
+        type=_normalize_portfolio_type(str(item_type).strip() or "ETF"),
+        amount=coerce_float(_first("amount", "market_value", "最新市值", "市值")),
+        profit=coerce_float(_first("profit", "pnl", "浮动盈亏", "盈亏")),
+        cost_price=coerce_float(_first("cost_price", "cost", "成本价", "成本")),
+        shares=coerce_int(_first("shares", "quantity", "持股数量", "实际数量", "持仓数量", "持仓")),
+        account=_clean_text(_first("account", "账户"), default="中信", max_length=50),
+        status=_normalize_portfolio_status(_first("status", "状态") or "持有中"),
+        group_name=group_name,
+        group_color=group_color,
+        group_order=group_order,
+    )
+
+
+def _portfolio_item_key(item: OCRHolding) -> str:
+    code = _clean_text(item.code, max_length=20)
+    if code:
+        return f"code:{code}"
+    name = _clean_text(item.name, max_length=100)
+    if name:
+        return f"name:{name}"
+    return ""
+
+
+def _merge_ocr_items(items: list[OCRHolding]) -> list[OCRHolding]:
+    merged: dict[str, OCRHolding] = {}
+    ordered_keys: list[str] = []
+
+    for item in items:
+        key = _portfolio_item_key(item)
+        if not key:
+            continue
+        if key not in merged:
+            merged[key] = item
+            ordered_keys.append(key)
+            continue
+
+        current = merged[key].model_dump()
+        incoming = item.model_dump()
+        for field, value in incoming.items():
+            if current.get(field) in (None, "") and value not in (None, ""):
+                current[field] = value
+        merged[key] = OCRHolding(**current)
+
+    return [merged[key] for key in ordered_keys]
+
+
+def _infer_type_from_name(name: str, fallback: str = "ETF") -> str:
+    text = _clean_text(name).lower()
+    if "etf" in text:
+        return "ETF"
+    if any(token in text for token in ("基金", "lof", "联接", "混合", "债")):
+        return "基金"
+    if any(token in text for token in ("股份", "科技", "银行", "药业", "电子", "能源", "证券", "电力")):
+        return "股票"
+    return _normalize_portfolio_type(fallback)
+
+
+def _parse_portfolio_broker_dump_text(raw_text: str) -> list[OCRHolding]:
+    """Parse broker-style table text dump with fixed row columns.
+
+    Handles rows like: index, code, name, shares..., cost, price, pnl, ... , market_value.
+    """
+    items: list[OCRHolding] = []
+    for raw_line in str(raw_text or "").splitlines():
+        line = str(raw_line or "").strip()
+        if not line or "----------------" in line:
+            continue
+
+        if not _SECURITY_CODE_RE.search(line):
+            continue
+
+        if any(token in line for token in ("证券代码", "证券名称", "操作", "总资产", "资金余额")):
+            continue
+
+        columns = [part.strip() for part in re.split(r"\t+|\s{2,}", line) if part and part.strip()]
+        if not columns:
+            continue
+
+        code_idx = -1
+        code = ""
+        for idx, token in enumerate(columns):
+            if _SECURITY_CODE_RE.fullmatch(token):
+                code_idx = idx
+                code = token
+                break
+        if code_idx < 0:
+            continue
+
+        name = ""
+        if code_idx + 1 < len(columns):
+            name = _clean_text(columns[code_idx + 1], max_length=100)
+        if not name or _NUMBER_RE.match(name):
+            # Some OCR outputs mix whitespace so name is adjacent to code.
+            tail = line.split(code, 1)[-1]
+            m = _NAME_RE.search(tail)
+            name = _clean_text(m.group(0), max_length=100) if m else ""
+
+        if not name:
+            continue
+
+        tail_tokens = columns[code_idx + 2 :]
+        numeric_tokens = [token for token in tail_tokens if _NUMBER_RE.match(token)]
+
+        shares = None
+        cost_price = None
+        profit = None
+        amount = None
+
+        # Typical broker dump positions after name:
+        # shares(0), actual(1), available(2), frozen(3), cost(4), price(5), pnl(6), ... , market_value(10)
+        if len(numeric_tokens) >= 11:
+            shares = coerce_int(numeric_tokens[0])
+            cost_price = coerce_float(numeric_tokens[4])
+            profit = coerce_float(numeric_tokens[6])
+            amount = coerce_float(numeric_tokens[10])
+        elif len(numeric_tokens) >= 5:
+            shares = coerce_int(numeric_tokens[0])
+            cost_price = coerce_float(numeric_tokens[2])
+            profit = coerce_float(numeric_tokens[-2])
+            amount = coerce_float(numeric_tokens[-1])
+
+        items.append(
+            OCRHolding(
+                code=code,
+                name=name,
+                type=_infer_type_from_name(name),
+                amount=amount,
+                profit=profit,
+                cost_price=cost_price,
+                shares=shares,
+                account="中信",
+                status="持有中",
+            )
+        )
+
+    return _merge_ocr_items(items)
+
+
+def _parse_portfolio_text(raw_text: str) -> list[OCRHolding]:
+    # First pass: broker text dump parser (best for the provided screenshot/txt format).
+    broker_items = _parse_portfolio_broker_dump_text(raw_text)
+    if broker_items:
+        return broker_items
+
+    items: list[OCRHolding] = []
+    skip_tokens = (
+        "持仓股",
+        "总资产",
+        "浮动盈亏",
+        "当日参考盈亏",
+        "市值",
+        "盈亏",
+        "持仓/可用",
+        "成本/现价",
+    )
+    for raw_line in str(raw_text or "").splitlines():
+        line = str(raw_line or "").strip()
+        if not line:
+            continue
+
+        if any(token in line for token in skip_tokens):
+            continue
+
+        code_match = _SECURITY_CODE_RE.search(line)
+        code = code_match.group(1) if code_match else ""
+        if code_match:
+            prefix = line[: code_match.start()].strip("|:：- ")
+            suffix = line[code_match.end() :].strip("|:：- ")
+            if prefix:
+                name = prefix.split()[-1]
+            else:
+                suffix_match = re.search(r"[A-Za-z\u4e00-\u9fa5][A-Za-z0-9\u4e00-\u9fa5]{1,20}", suffix)
+                name = suffix_match.group(0) if suffix_match else ""
+        else:
+            # Accept name-only rows (common in broker screenshots where code is hidden)
+            # and rely on DeepSeek enrichment to infer possible codes.
+            name_match = re.search(r"[A-Za-z\u4e00-\u9fa5][A-Za-z0-9\u4e00-\u9fa5]{1,20}", line)
+            name = name_match.group(0) if name_match else ""
+
+        if not name:
+            continue
+
+        number_tokens = re.findall(r"-?\d[\d,]*(?:\.\d+)?", line)
+        if code and number_tokens and number_tokens[0] == code:
+            number_tokens = number_tokens[1:]
+
+        # Desktop broker table layout usually exposes a long numeric row after code+name.
+        if code and len(number_tokens) >= 11:
+            shares = coerce_int(number_tokens[1]) if len(number_tokens) >= 2 else None
+            cost_price = coerce_float(number_tokens[4]) if len(number_tokens) >= 5 else None
+            profit = coerce_float(number_tokens[6]) if len(number_tokens) >= 7 else None
+            amount = coerce_float(number_tokens[10]) if len(number_tokens) >= 11 else None
+        else:
+            amount = coerce_float(number_tokens[0]) if len(number_tokens) >= 1 else None
+            profit = coerce_float(number_tokens[1]) if len(number_tokens) >= 2 else None
+            cost_price = coerce_float(number_tokens[-2]) if len(number_tokens) >= 3 else None
+            shares = coerce_int(number_tokens[-1]) if len(number_tokens) >= 4 else None
+
+        items.append(
+            OCRHolding(
+                code=code,
+                name=_clean_text(name, max_length=100),
+                type=_infer_type_from_name(name),
+                amount=amount,
+                profit=profit,
+                cost_price=cost_price,
+                shares=shares,
+                account="中信",
+                status="持有中",
+            )
+        )
+
+    return _merge_ocr_items(items)
+
+
+def _parse_portfolio_code_name_pairs(raw_text: str) -> list[OCRHolding]:
+    """Last-resort parser: extract at least code+name pairs from noisy OCR text.
+
+    This keeps import alive even when numeric columns are badly recognized.
+    """
+    items: list[OCRHolding] = []
+    pending_code = ""
+
+    skip_tokens = (
+        "操作",
+        "证券代码",
+        "证券名称",
+        "收益",
+        "资金余额",
+        "总资产",
+        "仓位",
+        "持股天数",
+        "交易市场",
+    )
+
+    for raw_line in str(raw_text or "").splitlines():
+        line = str(raw_line or "").strip()
+        if not line:
+            continue
+        if any(token in line for token in skip_tokens):
+            continue
+
+        match = _SECURITY_CODE_RE.search(line)
+        if match:
+            code = match.group(1)
+            before = line[: match.start()].strip("|:：- ")
+            after = line[match.end() :].strip("|:：- ")
+            name_candidate = ""
+            if after:
+                m = _NAME_RE.search(after)
+                name_candidate = m.group(0) if m else ""
+            if not name_candidate and before:
+                m = _NAME_RE.search(before)
+                name_candidate = m.group(0) if m else ""
+
+            if name_candidate:
+                items.append(
+                    OCRHolding(
+                        code=code,
+                        name=_clean_text(name_candidate, max_length=100),
+                        type=_infer_type_from_name(name_candidate),
+                        amount=None,
+                        profit=None,
+                        cost_price=None,
+                        shares=None,
+                        account="中信",
+                        status="持有中",
+                    )
+                )
+                pending_code = ""
+            else:
+                pending_code = code
+            continue
+
+        # Name appears on a separate line after a code-only line.
+        if pending_code:
+            m = _NAME_RE.search(line)
+            if m:
+                name_candidate = _clean_text(m.group(0), max_length=100)
+                items.append(
+                    OCRHolding(
+                        code=pending_code,
+                        name=name_candidate,
+                        type=_infer_type_from_name(name_candidate),
+                        amount=None,
+                        profit=None,
+                        cost_price=None,
+                        shares=None,
+                        account="中信",
+                        status="持有中",
+                    )
+                )
+                pending_code = ""
+
+    return _merge_ocr_items(items)
+
+
+def _needs_deepseek_enrichment(items: list[OCRHolding]) -> bool:
+    if not items:
+        return False
+    sparse = 0
+    missing_code = 0
+    for item in items:
+        missing_numeric = [item.amount, item.profit, item.cost_price, item.shares]
+        if all(value in (None, "") for value in missing_numeric):
+            sparse += 1
+        if not _clean_text(item.code, max_length=20):
+            missing_code += 1
+    return sparse >= max(1, len(items) // 2) or missing_code > 0
+
+
+def _needs_portfolio_fallback(items: list[OCRHolding]) -> bool:
+    if not items:
+        return True
+    valid_names = sum(1 for item in items if _clean_text(item.name, max_length=100))
+    missing_code = sum(1 for item in items if not _clean_text(item.code, max_length=20))
+    return valid_names < 2 or missing_code >= max(1, len(items) // 2)
+
+
+async def _extract_portfolio_layout_items(provider, model: str, image_base64: str) -> tuple[list[OCRHolding], str]:
+    source = decode_image(image_base64)
+    crop_candidates: list[str] = []
+    if source is not None:
+        width, height = source.size
+        is_desktop_table = width > height * 1.35
+        if is_desktop_table:
+            crop_candidates.append(
+                crop_image_base64(
+                    image_base64,
+                    left=0.01,
+                    top=0.28,
+                    right=0.995,
+                    bottom=0.98,
+                    max_width=1800,
+                    max_height=1800,
+                )
+            )
+            crop_candidates.append(
+                crop_image_base64(
+                    image_base64,
+                    left=0.0,
+                    top=0.20,
+                    right=1.0,
+                    bottom=1.0,
+                    max_width=1800,
+                    max_height=2000,
+                )
+            )
+        else:
+            crop_candidates.append(
+                crop_image_base64(
+                    image_base64,
+                    left=0.0,
+                    top=0.34,
+                    right=0.98,
+                    bottom=1.0,
+                    max_width=1280,
+                    max_height=3600,
+                )
+            )
+    if not crop_candidates:
+        crop_candidates.append(
+            crop_image_base64(
+                image_base64,
+                left=0.0,
+                top=0.34,
+                right=0.98,
+                bottom=1.0,
+                max_width=1280,
+                max_height=3600,
+            )
+        )
+
+    prompt = (
+        "你在识别中国券商持仓页，可能来自手机APP，也可能来自PC客户端。"
+        "手机布局通常是四列：名称/市值、盈亏/盈亏率、持仓/可用、成本/现价。"
+        "PC布局通常是表格行，证券代码在前，名称在后，后面依次是持仓、成本、现价、浮动盈亏、最新市值等。"
+        "有些截图不会显示证券代码。"
+        "请只提取真实持仓行，忽略标题、汇总、页头、排序箭头。"
+        "返回 JSON 数组，每项字段必须包含：name, code, type, amount, profit, cost_price, shares, account, status。"
+        "规则：\n"
+        "1) code 不可见时返回空字符串，不要编造；\n"
+        "2) type 只能是 股票/ETF/基金；\n"
+        "3) account 固定填 中信；\n"
+        "4) status 固定填 持有中；\n"
+        "5) 只返回 JSON，不要解释。"
+    )
+
+    raw_parts: list[str] = []
+    extracted: list[OCRHolding] = []
+    for focused in crop_candidates:
+        local_items: list[OCRHolding] = []
+        local_raw_parts: list[str] = []
+        for segment in slice_image_base64(focused):
+            try:
+                raw = await asyncio.wait_for(provider.vision(segment, prompt, model=model or None), timeout=50)
+            except Exception:
+                continue
+
+            text = str(raw or "").strip()
+            if not text:
+                continue
+            local_raw_parts.append(text)
+
+            try:
+                payload = json.loads(extract_json_block(text))
+            except Exception:
+                local_items.extend(_parse_portfolio_text(text))
+                local_items.extend(_parse_portfolio_code_name_pairs(text))
+                continue
+
+            if isinstance(payload, dict):
+                payload = payload.get("items", [])
+            if not isinstance(payload, list):
+                continue
+
+            for row in payload:
+                if not isinstance(row, dict):
+                    continue
+                item = _normalize_ocr_item(row)
+                if _clean_text(item.name, max_length=100):
+                    local_items.append(item)
+
+            # Even when JSON parsing succeeds, providers may use unknown key names or malformed rows.
+            # Run tolerant text parsers in parallel to salvage code+name pairs.
+            local_items.extend(_parse_portfolio_text(text))
+            local_items.extend(_parse_portfolio_code_name_pairs(text))
+
+        merged_local_items = _merge_ocr_items(local_items)
+        if merged_local_items:
+            extracted = merged_local_items
+            raw_parts = local_raw_parts
+            if not _needs_portfolio_fallback(merged_local_items):
+                break
+
+    return _merge_ocr_items(extracted), "\n\n".join(raw_parts)
+
+
+async def _enrich_portfolio_items_with_deepseek(items: list[OCRHolding], raw_text: str) -> list[OCRHolding]:
+    settings.reload()
+    deepseek_cfg = settings.get("ai.providers.deepseek") or {}
+    deepseek_key = str(deepseek_cfg.get("api_key", "") or "").strip()
+    if not deepseek_key or not items:
+        return items
+
+    provider = get_provider("deepseek")
+    seed = [item.model_dump() for item in items]
+    prompt = (
+        "你是持仓OCR纠错助手。根据原始OCR文本和初步结构化结果，尽量补全缺失字段。"
+        "要求：\n"
+        "1) 仅在缺失字段时补充，不要改动已有可靠数值；\n"
+        "2) 当条目缺少code但有name时，请尽量推断A股/ETF/基金的6位代码；无法确定再保留空；\n"
+        "3) type 只能是 股票/ETF/基金；\n"
+        "4) status 只能是 持有中/减仓中/已清仓；\n"
+        "5) 输出 JSON 数组，每项字段: code,name,type,amount,profit,cost_price,shares,account,status；\n"
+        "6) 无法判断的字段保留 null 或原值；\n"
+        "7) 只返回 JSON。\n\n"
+        f"原始OCR文本:\n{raw_text}\n\n"
+        f"初步结构化结果:{json.dumps(seed, ensure_ascii=False)}"
+    )
+
+    try:
+        raw = await asyncio.wait_for(
+            provider.chat(
+                [{"role": "user", "content": prompt}],
+                model="deepseek-v4-flash",
+                temperature=0.2,
+            ),
+            timeout=80,
+        )
+        payload = json.loads(extract_json_block(raw))
+    except Exception:
+        return items
+
+    if isinstance(payload, dict):
+        payload = payload.get("items", [])
+    if not isinstance(payload, list):
+        return items
+
+    merged: dict[str, dict[str, Any]] = {
+        _portfolio_item_key(item): item.model_dump() for item in items if _portfolio_item_key(item)
+    }
+    for row in payload:
+        if not isinstance(row, dict):
+            continue
+        code = _clean_text(row.get("code", ""), max_length=20)
+        name = _clean_text(row.get("name", ""), max_length=100)
+
+        key_candidates = []
+        if code:
+            key_candidates.append(f"code:{code}")
+        if name:
+            key_candidates.append(f"name:{name}")
+        if not key_candidates:
+            continue
+
+        match_key = next((key for key in key_candidates if key in merged), "")
+        if not match_key:
+            # If model provides code for a name-only seed row, map it back by name.
+            if name and f"name:{name}" in merged:
+                match_key = f"name:{name}"
+            else:
+                continue
+
+        current = merged[match_key]
+        for field in ("name", "type", "amount", "profit", "cost_price", "shares", "account", "status"):
+            if current.get(field) in (None, "") and row.get(field) not in (None, ""):
+                current[field] = row.get(field)
+        if not current.get("code") and code:
+            current["code"] = code
+
+    normalized: list[OCRHolding] = []
+    for item in items:
+        row = merged.get(_portfolio_item_key(item), item.model_dump())
+        row_code = _clean_text(row.get("code", ""), max_length=20)
+        row_name = _clean_text(row.get("name", ""), max_length=100)
+        if not row_name:
+            continue
+        normalized.append(
+            OCRHolding(
+                code=row_code,
+                name=row_name,
+                type=_normalize_portfolio_type(row.get("type", "ETF")),
+                amount=coerce_float(row.get("amount")),
+                profit=coerce_float(row.get("profit")),
+                cost_price=coerce_float(row.get("cost_price")),
+                shares=coerce_int(row.get("shares")),
+                account=_clean_text(row.get("account", "中信"), default="中信", max_length=50),
+                status=_normalize_portfolio_status(row.get("status", "持有中")),
+            )
+        )
+    return _merge_ocr_items(normalized)
+
+
+def _build_portfolio_from_row(row: dict) -> Portfolio:
+    group_name, group_color, group_order = _derive_group_fields(
+        group_name=row.get("group_name", "") or row.get("group", ""),
+        group_color=row.get("group_color", ""),
+        group_order=row.get("group_order", _DEFAULT_GROUP_ORDER),
+    )
+    return Portfolio(
+        code=str(row.get("code", "") or "").strip(),
+        name=str(row.get("name", "") or "").strip(),
+        type=_normalize_portfolio_type(str(row.get("type", "") or "ETF").strip() or "ETF"),
+        account=str(row.get("account", "") or "中信").strip() or "中信",
+        sector=str(row.get("sector", "") or row.get("industry", "")).strip() or None,
+        amount=coerce_float(row.get("amount") or row.get("market_value")),
+        profit=coerce_float(row.get("profit") or row.get("pnl") or row.get("return_value")),
+        cost_price=coerce_float(row.get("cost_price") or row.get("cost")),
+        current_price=coerce_float(row.get("current_price")),
+        shares=coerce_int(row.get("shares") or row.get("quantity")),
+        status=_normalize_portfolio_status(row.get("status", "") or "持有中"),
+        reason=str(row.get("reason", "") or "").strip() or None,
+        target=str(row.get("target", "") or "").strip() or None,
+        group_name=group_name,
+        group_color=group_color,
+        group_order=group_order,
+    )
+
+
+async def _import_portfolio_rows(rows: list[dict], db: Session) -> dict:
+    created = 0
+    errors: list[str] = []
+    imported_codes: set[str] = set()
+    for row_num, row in enumerate(rows, start=1):
+        if not isinstance(row, dict):
+            errors.append(f"Row {row_num}: invalid row")
+            continue
+        try:
+            item = _build_portfolio_from_row(row)
+            if not _clean_text(item.code) or not _clean_text(item.name):
+                errors.append(f"Row {row_num}: missing code/name")
+                continue
+            db.add(item)
+            db.flush()
+            _sync_watchlist_from_portfolio_item(db, item)
+            imported_codes.add(_clean_text(item.code, max_length=20))
+            created += 1
+        except Exception as exc:
+            errors.append(f"Row {row_num}: {exc}")
+
+    linked = _reconcile_watchlist_by_portfolio_codes(db, imported_codes)
+    db.commit()
+    return {"created": created, "errors": errors, "total": len(rows), "linked": linked}
+
+
+def _extract_portfolio_rows_from_text(raw_text: str) -> list[dict]:
+    parsed = _merge_ocr_items(
+        _parse_portfolio_broker_dump_text(raw_text)
+        + _parse_portfolio_text(raw_text)
+        + _parse_portfolio_code_name_pairs(raw_text)
+    )
+    rows: list[dict] = []
+    for item in parsed:
+        if not _clean_text(item.code) or not _clean_text(item.name):
+            continue
+        rows.append(item.model_dump())
+    return rows
+
+
+def _strip_markdown_fences(text: str) -> str:
+    cleaned = str(text or "").strip()
+    if cleaned.startswith("```"):
+        cleaned = re.sub(r"^```[a-zA-Z]*\n", "", cleaned)
+        cleaned = re.sub(r"\n```$", "", cleaned)
+    return cleaned.strip()
+
+
+async def _extract_portfolio_csv_with_kimi(image_base64: str) -> tuple[str, str, str]:
+    provider_name = "kimi"
+    model = "kimi-k2.6"
+    provider = get_provider(provider_name)
+    prompt = (
+        "你是券商持仓识别助手。请从截图中提取持仓表并只返回 CSV 文本，不要解释。"
+        "CSV 必须包含表头且字段名固定为："
+        "code,name,type,shares,cost_price,current_price,profit,amount,account,status。"
+        "规则：\n"
+        "1) code 必须是 6 位证券代码；\n"
+        "2) type 只能是 股票/ETF/基金；\n"
+        "3) status 固定填 持有中；\n"
+        "4) account 固定填 中信；\n"
+        "5) 无法识别的数值留空；\n"
+        "6) 只输出 CSV 文本，不要 markdown。"
+    )
+    try:
+        raw = await asyncio.wait_for(provider.vision(image_base64, prompt, model=model), timeout=90)
+        csv_text = _strip_markdown_fences(raw)
+        if csv_text:
+            return csv_text, provider_name, model
+    except Exception:
+        pass
+
+    focused = crop_image_base64(
+        image_base64,
+        left=0.0,
+        top=0.24,
+        right=1.0,
+        bottom=1.0,
+        max_width=1800,
+        max_height=2600,
+    )
+    parts: list[str] = []
+    for segment in slice_image_base64(focused):
+        try:
+            raw = await asyncio.wait_for(provider.vision(segment, prompt, model=model), timeout=50)
+            text = _strip_markdown_fences(raw)
+            if text:
+                parts.append(text)
+        except Exception:
+            continue
+
+    return "\n".join(parts).strip(), provider_name, model
+
+
+def _parse_portfolio_csv_rows(csv_text: str) -> list[dict]:
+    text = _strip_markdown_fences(csv_text).replace("\ufeff", "").strip()
+    if not text:
+        return []
+
+    lines = [line for line in text.splitlines() if line.strip()]
+    if len(lines) < 2:
+        return []
+
+    header_index = 0
+    for idx, line in enumerate(lines):
+        lower = line.lower()
+        if "code" in lower and "name" in lower:
+            header_index = idx
+            break
+    text = "\n".join(lines[header_index:])
+
+    header_line = text.splitlines()[0]
+    delimiters = [",", "\t", ";", "|"]
+    delimiter = max(delimiters, key=lambda d: header_line.count(d))
+
+    try:
+        reader = csv.DictReader(StringIO(text), delimiter=delimiter)
+    except Exception:
+        return []
+    if not reader.fieldnames:
+        return []
+
+    header_map = {
+        str(name or "").strip().lower(): name
+        for name in reader.fieldnames
+        if str(name or "").strip()
+    }
+    aliases = {
+        "code": ["code", "证券代码", "代码"],
+        "name": ["name", "证券名称", "名称"],
+        "type": ["type", "类型"],
+        "shares": ["shares", "quantity", "持仓", "持股数量", "实际数量"],
+        "cost_price": ["cost_price", "cost", "成本", "成本价"],
+        "current_price": ["current_price", "price", "当前价", "现价"],
+        "profit": ["profit", "pnl", "盈亏", "浮动盈亏"],
+        "amount": ["amount", "market_value", "市值", "最新市值"],
+        "account": ["account", "账户"],
+        "status": ["status", "状态"],
+    }
+
+    def _value(row: dict, key: str) -> str:
+        for alias in aliases[key]:
+            raw_key = header_map.get(alias.lower())
+            if raw_key is None:
+                continue
+            value = row.get(raw_key)
+            if value is not None:
+                return str(value).strip()
+        return ""
+
+    rows: list[dict] = []
+    for row in reader:
+        if not isinstance(row, dict):
+            continue
+        code = _clean_text(_value(row, "code"), max_length=20)
+        name = _clean_text(_value(row, "name"), max_length=100)
+        if not code or not name:
+            continue
+        rows.append(
+            {
+                "code": code,
+                "name": name,
+                "type": _value(row, "type") or _infer_type_from_name(name),
+                "shares": _value(row, "shares"),
+                "cost_price": _value(row, "cost_price"),
+                "current_price": _value(row, "current_price"),
+                "profit": _value(row, "profit"),
+                "amount": _value(row, "amount"),
+                "account": _value(row, "account") or "中信",
+                "status": _value(row, "status") or "持有中",
+            }
+        )
+    return rows
+
+
+async def _normalize_portfolio_rows_with_deepseek(csv_text: str, rows: list[dict]) -> list[dict]:
+    if not rows:
+        return []
+
+    settings.reload()
+    deepseek_cfg = settings.get("ai.providers.deepseek") or {}
+    deepseek_key = str(deepseek_cfg.get("api_key", "") or "").strip()
+    if not deepseek_key:
+        return rows
+
+    provider = get_provider("deepseek")
+    prompt = (
+        "你是持仓结构化清洗助手。基于 CSV 原文和初步解析结果，输出可直接入库的 JSON 数组。"
+        "每项字段固定为：code,name,type,amount,profit,cost_price,shares,account,status。"
+        "规则：\n"
+        "1) code 必须是 6 位；\n"
+        "2) type 只能是 股票/ETF/基金；\n"
+        "3) status 只能是 持有中/减仓中/已清仓；\n"
+        "4) account 缺失时填 中信；\n"
+        "5) 数值字段无法确定时可为 null；\n"
+        "6) 只返回 JSON，不要解释。\n\n"
+        f"CSV 原文:\n{csv_text}\n\n"
+        f"初步解析:\n{json.dumps(rows, ensure_ascii=False)}"
+    )
+
+    try:
+        raw = await asyncio.wait_for(
+            provider.chat(
+                [{"role": "user", "content": prompt}],
+                model="deepseek-v4-flash",
+                temperature=0.2,
+            ),
+            timeout=90,
+        )
+        payload = json.loads(extract_json_block(raw))
+    except Exception:
+        payload = rows
+
+    if isinstance(payload, dict):
+        payload = payload.get("items", [])
+    if not isinstance(payload, list):
+        payload = rows
+
+    normalized: list[dict] = []
+    for row in payload:
+        if not isinstance(row, dict):
+            continue
+        code = _clean_text(row.get("code", ""), max_length=20)
+        name = _clean_text(row.get("name", ""), max_length=100)
+        if not code or not name:
+            continue
+        normalized.append(
+            {
+                "code": code,
+                "name": name,
+                "type": _normalize_portfolio_type(row.get("type", "ETF")),
+                "amount": coerce_float(row.get("amount")),
+                "profit": coerce_float(row.get("profit")),
+                "cost_price": coerce_float(row.get("cost_price")),
+                "shares": coerce_int(row.get("shares")),
+                "account": _clean_text(row.get("account", "中信"), default="中信", max_length=50),
+                "status": _normalize_portfolio_status(row.get("status", "持有中")),
+            }
+        )
+
+    return normalized or rows
 
 
 def _get_item(db: Session, item_id: int) -> Portfolio:
@@ -34,6 +1218,7 @@ def _get_item(db: Session, item_id: int) -> Portfolio:
 async def list_portfolio(
     account: str | None = Query(None),
     type: str | None = Query(None),
+    status: str | None = Query(None),
     db: Session = Depends(get_db),
 ) -> list[Portfolio]:
     query = db.query(Portfolio)
@@ -41,7 +1226,17 @@ async def list_portfolio(
         query = query.filter(Portfolio.account == account)
     if type:
         query = query.filter(Portfolio.type == type)
-    return query.all()
+    if status:
+        query = query.filter(Portfolio.status == status)
+    return (
+        query.order_by(
+            Portfolio.group_order.asc(),
+            Portfolio.group_name.is_(None),
+            Portfolio.group_name.asc(),
+            Portfolio.updated_at.desc(),
+            Portfolio.id.asc(),
+        ).all()
+    )
 
 
 # -------------------------------------------------------------------- #
@@ -107,6 +1302,276 @@ async def portfolio_summary(db: Session = Depends(get_db)) -> PortfolioSummary:
     )
 
 
+@router.post("/ocr", response_model=OCRResponse)
+async def portfolio_ocr(data: OCRRequest) -> OCRResponse:
+    prompt = (
+        "You are extracting holdings from a Chinese brokerage screenshot. "
+        "Return JSON only as an array. Each item must use these keys: "
+        "code, name, type, amount, profit, cost_price, shares, account. "
+        "Use null for unknown numeric values. Infer type as one of 股票, ETF, 基金 when possible. "
+        "If screenshot has no holdings, return an empty array."
+    )
+    provider_name = ""
+    model = ""
+    raw_text = ""
+    items: list[OCRHolding] = []
+
+    try:
+        provider_name, model, items, raw_text = await run_json_ocr(
+            data.image_base64,
+            prompt,
+            _normalize_ocr_item,
+            lambda item: item.code or item.name,
+        )
+    except Exception:
+        items = []
+
+    # Adaptive fallback: when structured OCR returns too little information,
+    # or returns low-quality rows (common for broker layouts with hidden codes),
+    # switch to a holdings-layout-specific extraction strategy.
+    if _needs_portfolio_fallback(items):
+        provider_name, model, provider = resolve_ocr_providers()[0]
+        fallback_items, fallback_raw_text = await _extract_portfolio_layout_items(provider, model or "", data.image_base64)
+        if fallback_items:
+            items = fallback_items
+        if fallback_raw_text:
+            raw_text = fallback_raw_text
+
+    if not items and raw_text:
+        items = _merge_ocr_items(
+            _parse_portfolio_broker_dump_text(raw_text)
+            + _parse_portfolio_text(raw_text)
+            + _parse_portfolio_code_name_pairs(raw_text)
+        )
+
+    # For broker-style tables, force one deterministic parse pass from raw text.
+    if raw_text:
+        broker_items = _parse_portfolio_broker_dump_text(raw_text)
+        if len(broker_items) >= max(2, len(items)):
+            items = broker_items
+
+    if _needs_deepseek_enrichment(items):
+        items = await _enrich_portfolio_items_with_deepseek(items, raw_text)
+
+    return OCRResponse(
+        provider=provider_name or "adaptive",
+        model=model or "",
+        items=items,
+        raw_text=raw_text,
+    )
+
+
+@router.post("/ocr-extract-csv")
+async def portfolio_ocr_extract_csv(data: OCRRequest) -> dict:
+    csv_text, provider_name, model = await _extract_portfolio_csv_with_kimi(data.image_base64)
+    if not csv_text:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Failed to extract CSV from screenshot")
+    return {
+        "provider": provider_name,
+        "model": model,
+        "csv_text": csv_text,
+    }
+
+
+@router.post("/ocr-normalize-csv")
+async def portfolio_ocr_normalize_csv(request: dict) -> dict:
+    csv_text = str(request.get("csv_text", "") or "")
+    if not csv_text.strip():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="csv_text is required")
+
+    parsed_rows = _parse_portfolio_csv_rows(csv_text)
+    if not parsed_rows:
+        # Fallback to text parser to reduce hard failures on malformed CSV output.
+        parsed_rows = _extract_portfolio_rows_from_text(csv_text)
+    normalized_rows = await _normalize_portfolio_rows_with_deepseek(csv_text, parsed_rows)
+
+    return {
+        "provider": "deepseek",
+        "model": "deepseek-v4-flash",
+        "parsed": len(parsed_rows),
+        "items": normalized_rows,
+    }
+
+
+@router.post("/import-text")
+async def portfolio_import_text(request: dict, db: Session = Depends(get_db)) -> dict:
+    raw_text = str(request.get("text", "") or "")
+    if not raw_text.strip():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="text is required")
+
+    rows = _extract_portfolio_rows_from_text(raw_text)
+    if not rows:
+        return {
+            "created": 0,
+            "errors": ["No valid holdings parsed from text"],
+            "total": 0,
+        }
+
+    return await _import_portfolio_rows(rows, db)
+
+
+@router.post("/import-csv")
+async def portfolio_import_csv(request: dict, db: Session = Depends(get_db)) -> dict:
+    file_path = str(request.get("file_path", "") or "").strip()
+    if not file_path:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="file_path is required")
+
+    try:
+        with open(file_path, newline="", encoding="utf-8-sig") as fh:
+            reader = csv.DictReader(fh)
+            rows = [dict(row) for row in reader]
+    except Exception as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"CSV read error: {exc}") from exc
+
+    result = await _import_portfolio_rows(rows, db)
+    return {"created": int(result.get("created", 0)), "errors": list(result.get("errors", []))}
+
+
+@router.post("/import-items")
+async def portfolio_import_items(request: dict, db: Session = Depends(get_db)) -> dict:
+    rows = request.get("items", [])
+    if not isinstance(rows, list):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="items must be a list")
+    return await _import_portfolio_rows(rows, db)
+
+
+@router.post("/grouping/auto")
+async def portfolio_group_auto(request: dict, db: Session = Depends(get_db)) -> dict:
+    ids = request.get("ids", [])
+    query = db.query(Portfolio)
+    if isinstance(ids, list) and ids:
+        normalized_ids = [int(v) for v in ids if str(v).strip().isdigit()]
+        if normalized_ids:
+            query = query.filter(Portfolio.id.in_(normalized_ids))
+
+    items = query.all()
+    if not items:
+        return {"updated": 0, "groups": []}
+
+    provider, model = _require_deepseek_grouping_provider()
+    assign_map, group_order_list = await _ai_group_portfolio_items(provider, model, items, candidates=None)
+    group_order_map = {name: idx for idx, name in enumerate(group_order_list)}
+
+    group_counts: dict[str, int] = {}
+    for item in items:
+        group_name = _normalize_group_name(assign_map.get(item.id)) or "核心持仓"
+        item.group_name = group_name
+        item.group_color = _group_color_for_name(group_name)
+        item.group_order = group_order_map.get(group_name, _DEFAULT_GROUP_ORDER)
+        _sync_watchlist_from_portfolio_item(db, item)
+        group_counts[group_name] = group_counts.get(group_name, 0) + 1
+
+    db.commit()
+    return {
+        "updated": len(items),
+        "groups": [
+            {
+                "name": name,
+                "count": count,
+                "color": _group_color_for_name(name),
+                "order": group_order_map.get(name, _DEFAULT_GROUP_ORDER),
+            }
+            for name, count in group_counts.items()
+        ],
+    }
+
+
+@router.post("/grouping/semi")
+async def portfolio_group_semi(request: dict, db: Session = Depends(get_db)) -> dict:
+    raw_groups = request.get("group_names", [])
+    group_names: list[str] = []
+    if isinstance(raw_groups, str):
+        group_names = [name.strip() for name in raw_groups.split(",") if name.strip()]
+    elif isinstance(raw_groups, list):
+        group_names = [str(name).strip() for name in raw_groups if str(name).strip()]
+
+    if not group_names:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="group_names is required")
+
+    ids = request.get("ids", [])
+    query = db.query(Portfolio)
+    if isinstance(ids, list) and ids:
+        normalized_ids = [int(v) for v in ids if str(v).strip().isdigit()]
+        if normalized_ids:
+            query = query.filter(Portfolio.id.in_(normalized_ids))
+
+    items = query.all()
+    if not items:
+        return {"updated": 0, "groups": []}
+
+    provider, model = _require_deepseek_grouping_provider()
+    assign_map, _ = await _ai_group_portfolio_items(provider, model, items, candidates=group_names)
+    group_order_map = {name: idx for idx, name in enumerate(group_names)}
+
+    group_counts: dict[str, int] = {}
+    for item in items:
+        group_name = _normalize_group_name(assign_map.get(item.id)) or group_names[0]
+        if group_name not in group_order_map:
+            group_name = group_names[0]
+        item.group_name = group_name
+        item.group_color = _group_color_for_name(group_name)
+        item.group_order = group_order_map[group_name]
+        _sync_watchlist_from_portfolio_item(db, item)
+        group_counts[group_name] = group_counts.get(group_name, 0) + 1
+
+    db.commit()
+    return {
+        "updated": len(items),
+        "groups": [
+            {
+                "name": name,
+                "count": group_counts.get(name, 0),
+                "color": _group_color_for_name(name),
+                "order": group_order_map[name],
+            }
+            for name in group_names
+        ],
+    }
+
+
+@router.post("/grouping/manual")
+async def portfolio_group_manual(request: dict, db: Session = Depends(get_db)) -> dict:
+    ids = request.get("ids", [])
+    if not isinstance(ids, list) or not ids:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="ids is required")
+    item_ids = [int(v) for v in ids if str(v).strip().isdigit()]
+    if not item_ids:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="ids is required")
+
+    group_name = _normalize_group_name(request.get("group_name"))
+    if group_name:
+        existing = (
+            db.query(Portfolio)
+            .filter(Portfolio.group_name == group_name)
+            .order_by(Portfolio.group_order.asc())
+            .first()
+        )
+        group_order = existing.group_order if existing else _normalize_group_order(request.get("group_order", _DEFAULT_GROUP_ORDER))
+        if group_order >= _DEFAULT_GROUP_ORDER:
+            max_order = db.query(Portfolio.group_order).order_by(Portfolio.group_order.desc()).first()
+            next_order = int(max_order[0]) + 1 if max_order and max_order[0] is not None else 0
+            group_order = min(next_order, _DEFAULT_GROUP_ORDER)
+        group_color = _normalize_group_color(request.get("group_color")) or _group_color_for_name(group_name)
+    else:
+        group_order = _DEFAULT_GROUP_ORDER
+        group_color = None
+
+    items = db.query(Portfolio).filter(Portfolio.id.in_(item_ids)).all()
+    for item in items:
+        item.group_name = group_name
+        item.group_color = group_color
+        item.group_order = group_order
+        _sync_watchlist_from_portfolio_item(db, item)
+
+    db.commit()
+    return {
+        "updated": len(items),
+        "group_name": group_name,
+        "group_color": group_color,
+        "group_order": group_order,
+    }
+
+
 # -------------------------------------------------------------------- #
 # GET /{id} – single item
 # -------------------------------------------------------------------- #
@@ -123,8 +1588,22 @@ async def create_portfolio(
     data: PortfolioCreate,
     db: Session = Depends(get_db),
 ) -> Portfolio:
-    item = Portfolio(**data.model_dump())
+    payload = data.model_dump()
+    payload["type"] = _normalize_portfolio_type(payload.get("type", "ETF"))
+    payload["status"] = _normalize_portfolio_status(payload.get("status", "持有中"))
+    group_name, group_color, group_order = _derive_group_fields(
+        group_name=payload.get("group_name"),
+        group_color=payload.get("group_color"),
+        group_order=payload.get("group_order", _DEFAULT_GROUP_ORDER),
+    )
+    payload["group_name"] = group_name
+    payload["group_color"] = group_color
+    payload["group_order"] = group_order
+
+    item = Portfolio(**payload)
     db.add(item)
+    db.flush()
+    _sync_watchlist_from_portfolio_item(db, item)
     db.commit()
     db.refresh(item)
     return item
@@ -140,8 +1619,24 @@ async def update_portfolio(
     db: Session = Depends(get_db),
 ) -> Portfolio:
     item = _get_item(db, id)
-    for key, value in data.model_dump(exclude_unset=True).items():
+    payload = data.model_dump(exclude_unset=True)
+    if "type" in payload:
+        payload["type"] = _normalize_portfolio_type(payload.get("type"))
+    if "status" in payload:
+        payload["status"] = _normalize_portfolio_status(payload.get("status"))
+    if {"group_name", "group_color", "group_order"} & set(payload.keys()):
+        group_name, group_color, group_order = _derive_group_fields(
+            group_name=payload.get("group_name", item.group_name),
+            group_color=payload.get("group_color", item.group_color),
+            group_order=payload.get("group_order", item.group_order),
+        )
+        payload["group_name"] = group_name
+        payload["group_color"] = group_color
+        payload["group_order"] = group_order
+
+    for key, value in payload.items():
         setattr(item, key, value)
+    _sync_watchlist_from_portfolio_item(db, item)
     db.commit()
     db.refresh(item)
     return item

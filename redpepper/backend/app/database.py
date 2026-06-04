@@ -10,9 +10,10 @@ import os
 from pathlib import Path
 
 from sqlalchemy import create_engine, event
+from sqlalchemy import text
 from sqlalchemy.orm import sessionmaker, declarative_base, Session
 
-from app.config import settings
+from backend.app.config import settings
 
 # ---------------------------------------------------------------------------
 # Path resolution
@@ -66,7 +67,7 @@ def get_db() -> Session:
 
     Usage (FastAPI dependency):
         from fastapi import Depends
-        from app.database import get_db
+        from backend.app.database import get_db
 
         @router.get("/items")
         def list_items(db: Session = Depends(get_db)):
@@ -86,6 +87,43 @@ def init_db() -> None:
     semantics internally.
     """
     # Import models so they are registered with Base.metadata
-    import app.models  # noqa: F401
+    import backend.app.models  # noqa: F401
 
     Base.metadata.create_all(bind=engine)
+    _migrate_watchlist_group_columns()
+    _migrate_portfolio_status_and_group_columns()
+
+
+def _migrate_watchlist_group_columns() -> None:
+    """Ensure watchlist grouping columns exist for legacy SQLite databases."""
+    required_columns = {
+        "group_name": "TEXT",
+        "group_color": "TEXT",
+        "group_order": "INTEGER NOT NULL DEFAULT 999",
+    }
+
+    with engine.begin() as conn:
+        rows = conn.execute(text("PRAGMA table_info(watchlist)")).fetchall()
+        existing = {str(row[1]) for row in rows}
+        for col_name, col_type in required_columns.items():
+            if col_name in existing:
+                continue
+            conn.execute(text(f"ALTER TABLE watchlist ADD COLUMN {col_name} {col_type}"))
+
+
+def _migrate_portfolio_status_and_group_columns() -> None:
+    """Ensure portfolio status/grouping columns exist for legacy SQLite databases."""
+    required_columns = {
+        "status": "TEXT NOT NULL DEFAULT '持有中'",
+        "group_name": "TEXT",
+        "group_color": "TEXT",
+        "group_order": "INTEGER NOT NULL DEFAULT 999",
+    }
+
+    with engine.begin() as conn:
+        rows = conn.execute(text("PRAGMA table_info(portfolio)")).fetchall()
+        existing = {str(row[1]) for row in rows}
+        for col_name, col_type in required_columns.items():
+            if col_name in existing:
+                continue
+            conn.execute(text(f"ALTER TABLE portfolio ADD COLUMN {col_name} {col_type}"))

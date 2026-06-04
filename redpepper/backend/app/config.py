@@ -32,7 +32,7 @@ class ConfigSection:
         parts = key.split(".")
         obj: Any = self
         for part in parts:
-            if isinstance(obj, ConfigSection) and hasattr(obj, part):
+            if hasattr(obj, part):
                 obj = getattr(obj, part)
             else:
                 return default
@@ -91,7 +91,7 @@ class Settings:
         parts = key.split(".")
         obj: Any = self
         for part in parts:
-            if isinstance(obj, ConfigSection) and hasattr(obj, part):
+            if hasattr(obj, part):
                 obj = getattr(obj, part)
             else:
                 return default

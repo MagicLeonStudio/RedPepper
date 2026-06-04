@@ -15,9 +15,9 @@ BG_DARK = "#0D0D1A"
 BG_CARD = "#1A1A2E"
 TEXT_PRIMARY = "#E8E8F0"
 TEXT_SECONDARY = "#7A7A9E"
-BRAND_RED = "#E62E2E"
+BRAND_RED = "#F05C77"
 ACCENT_PURPLE = "#8B5CF6"
-BORDER_COLOR = "#8B5CF633"
+BORDER_COLOR = "#338B5CF6"
 
 TABLE_STYLE = f"""
     QTableWidget {{
@@ -32,7 +32,7 @@ TABLE_STYLE = f"""
         border-bottom: 1px solid {BORDER_COLOR};
     }}
     QTableWidget::item:selected {{
-        background-color: #E62E2E44;
+        background-color: #44F05C77;
     }}
     QHeaderView::section {{
         background-color: #2A2A3E;
@@ -98,7 +98,7 @@ class KnowledgePage(QWidget):
 
         # Title
         title = QLabel(tr("Knowledge Hub"))
-        title.setFont(QFont("Arial", 22, QFont.Weight.Bold))
+        title.setFont(QFont("Microsoft YaHei UI", 22, QFont.Weight.Bold))
         title.setStyleSheet(f"color: {TEXT_PRIMARY};")
         layout.addWidget(title)
 
@@ -132,7 +132,7 @@ class KnowledgePage(QWidget):
                 padding: 10px 20px;
                 font-size: 13px;
             }}
-            QPushButton:hover {{ background-color: #FF4444; }}
+            QPushButton:hover {{ background-color: #F37A90; }}
         """)
         btn_search.clicked.connect(self._on_search)
         search_layout.addWidget(btn_search)
@@ -191,7 +191,7 @@ class KnowledgePage(QWidget):
                 font-size: 13px;
                 font-weight: bold;
             }}
-            QPushButton:hover {{ background-color: #FF4444; }}
+            QPushButton:hover {{ background-color: #F37A90; }}
         """)
         btn_add.clicked.connect(self._on_add)
         form_layout.addRow(btn_add)
@@ -200,7 +200,7 @@ class KnowledgePage(QWidget):
 
     def _load_data(self):
         try:
-            from backend.services.knowledge_service import KnowledgeService
+            from frontend.services.knowledge_service import KnowledgeService
             svc = KnowledgeService()
             self._knowledge = svc.get_knowledge()
         except Exception:
@@ -260,14 +260,14 @@ class KnowledgePage(QWidget):
         }
 
         try:
-            from backend.services.knowledge_service import KnowledgeService
+            from frontend.services.knowledge_service import KnowledgeService
             svc = KnowledgeService()
             svc.add_knowledge(data)
-        except Exception:
-            pass
+        except Exception as e:
+            QMessageBox.warning(self, tr("Error"), tr("Failed to save knowledge") + f": {e}")
+            return
 
-        self._knowledge.insert(0, data)
-        self._refresh_table()
+        self._load_data()
 
         self.url_input.clear()
         self.tags_input.clear()

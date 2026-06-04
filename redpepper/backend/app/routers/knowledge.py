@@ -6,9 +6,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
-from app.dependencies import get_db
-from app.models import Knowledge
-from app.schemas import KnowledgeCreate, KnowledgeResponse, KnowledgeUpdate
+from backend.app.dependencies import get_db
+from backend.app.models import Knowledge
+from backend.app.schemas import KnowledgeCreate, KnowledgeResponse, KnowledgeUpdate
 
 router = APIRouter()
 
