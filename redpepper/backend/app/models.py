@@ -177,6 +177,8 @@ class Knowledge(Base):
     tags = Column(String(200), nullable=True)
     summary = Column(Text, nullable=True)
     related_stocks = Column(String(200), nullable=True)
+    content_html = Column(Text, nullable=True)
+    content_base_dir = Column(String(500), nullable=True)
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
 
 

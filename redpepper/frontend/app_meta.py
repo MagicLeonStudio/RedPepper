@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-APP_VERSION = "v0.0.4"
+APP_VERSION = "v0.0.5"
 
 
 def project_root() -> Path:

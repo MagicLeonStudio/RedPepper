@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>国产算力卡品牌分类 | ASIC/GPU/GPGPU</title>
+<style>
+  :root {
+    --bg: #050510;
+    --bg2: #0a0a20;
+    --card: rgba(18,18,38,0.72);
+    --card2: rgba(22,22,48,0.55);
+    --text: #e0e0f0;
+    --text2: #8a8ab0;
+    --text3: #6a6a90;
+    --pink: #ff2d78;
+    --cyan: #00e5ff;
+    --purple: #b347e6;
+    --accent: var(--cyan);
+    --border: rgba(120,100,220,0.25);
+    --glow: 0 0 20px rgba(0,229,255,0.15);
+    --glow-pink: 0 0 20px rgba(255,45,120,0.15);
+    --glow-purple: 0 0 20px rgba(179,71,230,0.15);
+    --green: #2cb67d;
+    --orange: #ff9f43;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    min-height: 100vh;
+    overflow-x: hidden;
+    padding-bottom: 80px;
+    font-size: 15px;
+  }
+  #particles {
+    position: fixed; top:0; left:0; width:100%; height:100%; z-index:0; pointer-events:none;
+  }
+  .container {
+    position: relative; z-index: 1; max-width: 520px; margin: 0 auto; padding: 16px;
+  }
+
+  /* ===== Topbar ===== */
+  .topbar {
+    position: sticky; top: 0; z-index: 50;
+    background: rgba(5,5,16,0.85);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border-bottom: 1px solid var(--border);
+    margin: -16px -16px 16px;
+    padding: 12px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .topbar .title {
+    font-size: 17px;
+    font-weight: 700;
+    background: linear-gradient(90deg, var(--cyan), var(--purple));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .topbar .badge {
+    font-size: 11px;
+    color: var(--text2);
+    background: var(--card2);
+    padding: 4px 10px;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+  }
+
+  /* ===== Page Title ===== */
+  .page-title {
+    font-size: 20px;
+    font-weight: 700;
+    text-align: center;
+    margin: 8px 0 20px;
+    background: linear-gradient(135deg, var(--cyan), var(--purple));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* ===== Cards ===== */
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 18px;
+    margin-bottom: 16px;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.05);
+    position: relative;
+    overflow: hidden;
+    transition: border-color 0.3s;
+  }
+  .card:hover {
+    border-color: rgba(120,100,220,0.4);
+  }
+  .card::before {
+    content: ''; position: absolute; top:0; left:0; right:0; height:1px;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.15), transparent);
+  }
+  .card-title {
+    font-size: 16px; font-weight: 600;
+    margin-bottom: 14px;
+    display: flex; align-items: center; justify-content: space-between;
+    color: var(--text);
+  }
+
+  /* ===== Tags ===== */
+  .tag {
+    font-size: 11px; padding: 3px 10px;
+    border-radius: 10px;
+    background: rgba(0,229,255,0.1);
+    color: var(--cyan);
+    border: 1px solid rgba(0,229,255,0.2);
+    white-space: nowrap;
+  }
+  .tag.pink {
+    background: rgba(255,45,120,0.1); color: var(--pink);
+    border-color: rgba(255,45,120,0.2);
+  }
+  .tag.purple {
+    background: rgba(179,71,230,0.1); color: var(--purple);
+    border-color: rgba(179,71,230,0.2);
+  }
+  .tag.green {
+    background: rgba(44,182,125,0.1); color: var(--green);
+    border-color: rgba(44,182,125,0.2);
+  }
+  .tag.orange {
+    background: rgba(255,159,67,0.1); color: var(--orange);
+    border-color: rgba(255,159,67,0.2);
+  }
+
+  /* ===== Note Cards ===== */
+  .note-card {
+    background: rgba(0,229,255,0.06);
+    border: 1px solid rgba(0,229,255,0.15);
+    border-radius: 12px;
+    padding: 12px 14px;
+    font-size: 13px;
+    color: var(--text2);
+    line-height: 1.7;
+    margin-bottom: 14px;
+  }
+  .note-card.pink {
+    background: rgba(255,45,120,0.06); border-color: rgba(255,45,120,0.15);
+  }
+  .note-card.purple {
+    background: rgba(179,71,230,0.06); border-color: rgba(179,71,230,0.15);
+  }
+  .note-card.green {
+    background: rgba(44,182,125,0.06); border-color: rgba(44,182,125,0.15);
+  }
+
+  /* ===== Brand Items ===== */
+  .brand-item {
+    padding-bottom: 14px;
+    margin-bottom: 14px;
+    border-bottom: 1px solid var(--border);
+  }
+  .brand-item:last-child {
+    border-bottom: none;
+    margin-bottom: 0;
+    padding-bottom: 0;
+  }
+  .brand-name {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--cyan);
+    margin-bottom: 4px;
+  }
+  .brand-desc {
+    font-size: 12px;
+    color: var(--text2);
+    line-height: 1.5;
+  }
+  .brand-img {
+    width: 100%;
+    height: 150px;
+    object-fit: cover;
+    border-radius: 10px;
+    margin-bottom: 10px;
+    background: #111;
+  }
+  .placeholder-img {
+    width: 100%;
+    height: 150px;
+    border-radius: 10px;
+    margin-bottom: 10px;
+    background: linear-gradient(135deg, #1a1a3a, #2a2a5a);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--cyan);
+    font-size: 14px;
+    font-weight: 500;
+    border: 1px solid var(--border);
+  }
+
+  /* ===== Stat Row ===== */
+  .stat-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    margin: 14px 0;
+  }
+  .stat-box {
+    flex: 1;
+    text-align: center;
+    padding: 14px 6px;
+    background: var(--card2);
+    border-radius: 12px;
+    border: 1px solid var(--border);
+  }
+  .stat-box .label {
+    font-size: 11px;
+    color: var(--text2);
+    margin-bottom: 6px;
+    white-space: nowrap;
+  }
+  .stat-box .value {
+    font-size: 18px;
+    font-weight: 700;
+  }
+
+  /* ===== Divider ===== */
+  .divider {
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--border), transparent);
+    margin: 20px 0;
+  }
+
+  /* ===== Bottom Nav ===== */
+  .nav-bar {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 100;
+    background: rgba(5,5,16,0.92);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-top: 1px solid var(--border);
+    display: flex;
+    justify-content: space-around;
+    padding: 8px 0 calc(8px + env(safe-area-inset-bottom));
+  }
+  .nav-btn {
+    background: none;
+    border: none;
+    color: var(--text2);
+    font-size: 10px;
+    padding: 4px 8px;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    transition: all 0.2s;
+    text-decoration: none;
+  }
+  .nav-btn.active { color: var(--cyan); }
+
+  /* ===== Scroll Top Button ===== */
+  .scroll-top {
+    position: fixed;
+    bottom: 70px;
+    right: 16px;
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    background: var(--card);
+    border: 1px solid var(--border);
+    color: var(--cyan);
+    font-size: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: 99;
+    backdrop-filter: blur(10px);
+    transition: all 0.3s;
+    opacity: 0;
+    pointer-events: none;
+  }
+  .scroll-top.visible {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .scroll-top:hover {
+    border-color: var(--cyan);
+    box-shadow: var(--glow);
+  }
+
+  /* ===== Highlight Bar ===== */
+  .highlight-bar {
+    border-left: 3px solid var(--cyan);
+    padding-left: 14px;
+    margin: 14px 0;
+    color: var(--text2);
+    font-size: 14px;
+    line-height: 1.7;
+  }
+</style>
+</head>
+<body>
+<div id="particles"></div>
+
+<div class="container">
+
+  <!-- Topbar -->
+  <div class="topbar">
+    <div class="title">AGI2Rich · 算力图谱</div>
+    <div class="badge">国产芯片</div>
+  </div>
+
+  <!-- Page Title -->
+  <h2 class="page-title">国产算力卡品牌分类</h2>
+
+  <!-- Quick Stats -->
+  <div class="stat-row" style="margin-bottom:20px;">
+    <div class="stat-box">
+      <div class="label">ASIC</div>
+      <div class="value" style="color:var(--cyan)">4</div>
+    </div>
+    <div class="stat-box">
+      <div class="label">GPU</div>
+      <div class="value" style="color:var(--purple)">2</div>
+    </div>
+    <div class="stat-box">
+      <div class="label">GPGPU</div>
+      <div class="value" style="color:var(--pink)">6</div>
+    </div>
+    <div class="stat-box">
+      <div class="label">总计</div>
+      <div class="value" style="color:var(--green)">12</div>
+    </div>
+  </div>
+
+  <!-- ASIC -->
+  <div class="card">
+    <div class="card-title">
+      <span>ASIC 专用AI加速卡</span>
+      <span class="tag">推理/训练</span>
+    </div>
+    <div class="note-card">
+      <strong style="color:var(--cyan)">架构特点：</strong>专为AI定制，无图形渲染能力，高能效、高算力，国产AI主力芯片
+    </div>
+
+    <div class="brand-item">
+      <img class="brand-img" src="images/ascend.png" alt="华为昇腾">
+      <div class="brand-name">华为昇腾 Ascend</div>
+      <div class="brand-desc">Atlas 300I/300T、910B、950PR | NPU/ASIC架构</div>
+    </div>
+
+    <div class="brand-item">
+      <img class="brand-img" src="images/cambricon.png" alt="寒武纪">
+      <div class="brand-name">寒武纪 Cambricon</div>
+      <div class="brand-desc">思元270/370/590 | MLU智能处理器</div>
+    </div>
+
+    <div class="brand-item">
+      <img class="brand-img" src="images/kunlun.png" alt="昆仑芯">
+      <div class="brand-name">百度昆仑芯</div>
+      <div class="brand-desc">R200、R480-X8 | 百度自研AI芯片</div>
+    </div>
+
+    <div class="brand-item">
+      <img class="brand-img" src="images/moffett.png" alt="墨芯">
+      <div class="brand-name">墨芯 Moffett</div>
+      <div class="brand-desc">S30 | 稀疏推理加速ASIC</div>
+    </div>
+  </div>
+
+  <!-- GPU -->
+  <div class="card">
+    <div class="card-title">
+      <span>GPU 全功能通用显卡</span>
+      <span class="tag purple">图形+AI</span>
+    </div>
+    <div class="note-card purple">
+      <strong style="color:var(--purple)">架构特点：</strong>同时支持图形渲染 + AI计算，对标NVIDIA全功能GPU
+    </div>
+
+    <div class="brand-item">
+      <img class="brand-img" src="images/moore.png" alt="摩尔线程">
+      <div class="brand-name">摩尔线程 Moore Thread</div>
+      <div class="brand-desc">MTT S80、S4000、S5000 | 国产全功能GPU</div>
+    </div>
+
+    <div class="brand-item">
+      <img class="brand-img" src="images/jingjiawei.png" alt="景嘉微">
+      <div class="brand-name">景嘉微 Jingjiawei</div>
+      <div class="brand-desc">JM7200、JM9230 | 国产自主GPU</div>
+    </div>
+  </div>
+
+  <!-- GPGPU -->
+  <div class="card">
+    <div class="card-title">
+      <span>GPGPU 通用计算卡</span>
+      <span class="tag pink">HPC/大模型</span>
+    </div>
+    <div class="note-card pink">
+      <strong style="color:var(--pink)">架构特点：</strong>专注高性能计算、大模型训练，图形能力弱，部分兼容CUDA
+    </div>
+
+    <div class="brand-item">
+      <div class="placeholder-img">海光 DCU 8100/7000</div>
+      <div class="brand-name">海光 Hygon DCU</div>
+      <div class="brand-desc">8100/7000系列 | GPGPU深度计算单元</div>
+    </div>
+
+    <div class="brand-item">
+      <img class="brand-img" src="images/iluvatar.png" alt="天数智芯">
+      <div class="brand-name">天数智芯 Iluvatar</div>
+      <div class="brand-desc">天垓100、智铠100 | 通用GPGPU</div>
+    </div>
+
+    <div class="brand-item">
+      <img class="brand-img" src="images/biren.png" alt="壁仞科技">
+      <div class="brand-name">壁仞科技 Biren</div>
+      <div class="brand-desc">BR100、BR104 | 高端训练GPGPU</div>
+    </div>
+
+    <div class="brand-item">
+      <div class="placeholder-img">沐曦 MX1 / MX2</div>
+      <div class="brand-name">沐曦 Muxi</div>
+      <div class="brand-desc">MX1、MX2 | 大模型训练GPGPU</div>
+    </div>
+
+    <div class="brand-item">
+      <img class="brand-img" src="images/loongson.png" alt="龙芯">
+      <div class="brand-name">龙芯 Loongson</div>
+      <div class="brand-desc">自主指令集 | 自研GPGPU</div>
+    </div>
+
+    <div class="brand-item">
+      <img class="brand-img" src="images/sinexus.png" alt="芯桥半导体">
+      <div class="brand-name">芯桥半导体 Sinexus</div>
+      <div class="brand-desc">X200、S200 | 通用计算GPGPU</div>
+    </div>
+  </div>
+
+  <!-- Summary Card -->
+  <div class="card" style="background: linear-gradient(135deg, rgba(0,229,255,0.06), rgba(179,71,230,0.06)); border-color: rgba(0,229,255,0.2);">
+    <div class="card-title">
+      <span>选型指南</span>
+      <span class="tag green">参考</span>
+    </div>
+    <div class="highlight-bar">
+      <strong style="color:var(--cyan)">AI推理/训练 &rarr;</strong> 优先 ASIC（昇腾、寒武纪）<br>
+      <strong style="color:var(--purple)">图形+AI双需求 &rarr;</strong> GPU（摩尔线程、景嘉微）<br>
+      <strong style="color:var(--pink)">大模型训练/HPC &rarr;</strong> GPGPU（海光DCU、壁仞、天数智芯）
+    </div>
+  </div>
+
+</div>
+
+<!-- Scroll Top -->
+<button class="scroll-top" id="scrollTop" onclick="window.scrollTo({top:0,behavior:'smooth'})">&#8593;</button>
+
+<!-- Bottom Nav -->
+<div class="nav-bar">
+  <button class="nav-btn active" onclick="window.scrollTo({top:0,behavior:'smooth'})">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+    顶部
+  </button>
+  <button class="nav-btn" onclick="document.querySelectorAll('.card')[0].scrollIntoView({behavior:'smooth'})">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2" ry="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/><line x1="20" y1="9" x2="23" y2="9"/><line x1="20" y1="14" x2="23" y2="14"/><line x1="1" y1="9" x2="4" y2="9"/><line x1="1" y1="14" x2="4" y2="14"/></svg>
+    ASIC
+  </button>
+  <button class="nav-btn" onclick="document.querySelectorAll('.card')[1].scrollIntoView({behavior:'smooth'})">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+    GPU
+  </button>
+  <button class="nav-btn" onclick="document.querySelectorAll('.card')[2].scrollIntoView({behavior:'smooth'})">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+    GPGPU
+  </button>
+</div>
+
+<script>
+// ===== Particle Background =====
+const canvas = document.createElement('canvas');
+canvas.id = 'particle-canvas';
+document.getElementById('particles').appendChild(canvas);
+const ctx = canvas.getContext('2d');
+
+let W, H;
+function resize() {
+  W = canvas.width = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+}
+resize();
+window.addEventListener('resize', resize);
+
+const PARTICLES = 60;
+const particles = [];
+for (let i = 0; i < PARTICLES; i++) {
+  particles.push({
+    x: Math.random() * W,
+    y: Math.random() * H,
+    vx: (Math.random() - 0.5) * 0.3,
+    vy: (Math.random() - 0.5) * 0.3,
+    r: Math.random() * 1.5 + 0.5,
+    color: Math.random() > 0.5 ? 'rgba(0,229,255,' : 'rgba(179,71,230,'
+  });
+}
+
+function drawParticles() {
+  ctx.clearRect(0, 0, W, H);
+  for (let i = 0; i < PARTICLES; i++) {
+    const p = particles[i];
+    p.x += p.vx;
+    p.y += p.vy;
+    if (p.x < 0 || p.x > W) p.vx *= -1;
+    if (p.y < 0 || p.y > H) p.vy *= -1;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+    ctx.fillStyle = p.color + (Math.random() * 0.3 + 0.1) + ')';
+    ctx.fill();
+  }
+  for (let i = 0; i < PARTICLES; i++) {
+    for (let j = i + 1; j < PARTICLES; j++) {
+      const dx = particles[i].x - particles[j].x;
+      const dy = particles[i].y - particles[j].y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < 120) {
+        ctx.beginPath();
+        ctx.moveTo(particles[i].x, particles[i].y);
+        ctx.lineTo(particles[j].x, particles[j].y);
+        ctx.strokeStyle = 'rgba(120,100,220,' + (0.08 * (1 - dist / 120)) + ')';
+        ctx.lineWidth = 0.5;
+        ctx.stroke();
+      }
+    }
+  }
+  requestAnimationFrame(drawParticles);
+}
+drawParticles();
+
+// ===== Scroll Top Button =====
+const scrollTopBtn = document.getElementById('scrollTop');
+window.addEventListener('scroll', () => {
+  if (window.scrollY > 400) {
+    scrollTopBtn.classList.add('visible');
+  } else {
+    scrollTopBtn.classList.remove('visible');
+  }
+});
+</script>
+
+</body>
+</html>

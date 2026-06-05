@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
@@ -10,6 +12,127 @@ from backend.app.models import Diary
 from backend.app.schemas import DiaryCreate, DiaryResponse, DiaryUpdate
 
 router = APIRouter()
+
+
+def _extract_js_string_field(blob: str, key: str) -> str:
+    pattern = rf"\b{re.escape(key)}\s*:\s*(['\"])(.*?)\1"
+    match = re.search(pattern, blob, flags=re.DOTALL)
+    if not match:
+        return ""
+    return match.group(2).replace("\\n", "\n").strip()
+
+
+def _find_matching_bracket(text: str, start_idx: int, open_ch: str, close_ch: str) -> int:
+    depth = 0
+    quote: str | None = None
+    escaped = False
+    i = start_idx
+
+    while i < len(text):
+        ch = text[i]
+        if quote:
+            if escaped:
+                escaped = False
+            elif ch == "\\":
+                escaped = True
+            elif ch == quote:
+                quote = None
+            i += 1
+            continue
+
+        if ch in ("'", '"'):
+            quote = ch
+            i += 1
+            continue
+
+        if ch == open_ch:
+            depth += 1
+        elif ch == close_ch:
+            depth -= 1
+            if depth == 0:
+                return i
+        i += 1
+
+    return -1
+
+
+def _extract_object_literals(array_blob: str) -> list[str]:
+    objects: list[str] = []
+    depth = 0
+    quote: str | None = None
+    escaped = False
+    start = -1
+
+    for idx, ch in enumerate(array_blob):
+        if quote:
+            if escaped:
+                escaped = False
+            elif ch == "\\":
+                escaped = True
+            elif ch == quote:
+                quote = None
+            continue
+
+        if ch in ("'", '"'):
+            quote = ch
+            continue
+
+        if ch == "{":
+            if depth == 0:
+                start = idx
+            depth += 1
+            continue
+
+        if ch == "}":
+            depth -= 1
+            if depth == 0 and start >= 0:
+                objects.append(array_blob[start : idx + 1])
+                start = -1
+
+    return objects
+
+
+def _extract_load_data_array(html_text: str, key: str) -> str:
+    anchors = [f"let {key} = loadData('{key}'", f'let {key} = loadData("{key}"']
+    anchor_idx = -1
+    for anchor in anchors:
+        anchor_idx = html_text.find(anchor)
+        if anchor_idx >= 0:
+            break
+    if anchor_idx < 0:
+        return ""
+
+    list_start = html_text.find("[", anchor_idx)
+    if list_start < 0:
+        return ""
+
+    list_end = _find_matching_bracket(html_text, list_start, "[", "]")
+    if list_end < 0:
+        return ""
+
+    return html_text[list_start : list_end + 1]
+
+
+def _extract_diaries_from_html(html_text: str) -> list[dict]:
+    array_blob = _extract_load_data_array(html_text, "diaries")
+    if not array_blob:
+        return []
+
+    parsed: list[dict] = []
+    for blob in _extract_object_literals(array_blob):
+        date = _extract_js_string_field(blob, "date")
+        if not date:
+            continue
+        parsed.append(
+            {
+                "date": date,
+                "best_op": _extract_js_string_field(blob, "best") or None,
+                "worst_op": _extract_js_string_field(blob, "worst") or None,
+                "reflection": _extract_js_string_field(blob, "reflect") or None,
+                "focus": _extract_js_string_field(blob, "focus") or None,
+            }
+        )
+    return parsed
 
 
 def _get_item(db: Session, item_id: int) -> Diary:
@@ -60,3 +183,76 @@ async def delete_diary(id: int, db: Session = Depends(get_db)) -> None:
     item = _get_item(db, id)
     db.delete(item)
     db.commit()
+
+
+@router.post("/import/agi2rich-html")
+async def import_agi2rich_diary_html(request: dict, db: Session = Depends(get_db)) -> dict:
+    file_path = str(request.get("file_path", "") or "").strip()
+    if not file_path:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="file_path is required")
+
+    try:
+        with open(file_path, "r", encoding="utf-8", errors="ignore") as fh:
+            html_text = fh.read()
+    except Exception as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"HTML read error: {exc}") from exc
+
+    parsed_rows = _extract_diaries_from_html(html_text)
+    if not parsed_rows:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No AGI2Rich diaries block found in HTML.",
+        )
+
+    existing_keys = {
+        (
+            str(item.date or ""),
+            str(item.best_op or ""),
+            str(item.worst_op or ""),
+            str(item.reflection or ""),
+            str(item.focus or ""),
+        )
+        for item in db.query(Diary).all()
+    }
+
+    created = 0
+    duplicates = 0
+    invalid = 0
+
+    for row in parsed_rows:
+        date = str(row.get("date", "") or "").strip()
+        if not date:
+            invalid += 1
+            continue
+
+        key = (
+            date,
+            str(row.get("best_op", "") or ""),
+            str(row.get("worst_op", "") or ""),
+            str(row.get("reflection", "") or ""),
+            str(row.get("focus", "") or ""),
+        )
+        if key in existing_keys:
+            duplicates += 1
+            continue
+
+        db.add(
+            Diary(
+                date=date,
+                best_op=row.get("best_op"),
+                worst_op=row.get("worst_op"),
+                reflection=row.get("reflection"),
+                focus=row.get("focus"),
+            )
+        )
+        existing_keys.add(key)
+        created += 1
+
+    db.commit()
+
+    return {
+        "total": len(parsed_rows),
+        "created": created,
+        "duplicates": duplicates,
+        "invalid": invalid,
+    }

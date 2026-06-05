@@ -20,6 +20,9 @@ class DiaryService:
         item = self.client.put(f"{self.base_path}/{diary_id}", json=payload)
         return self._normalize_item(item)
 
+    def import_from_agi2rich_html(self, file_path: str) -> dict:
+        return self.client.post(f"{self.base_path}/import/agi2rich-html", json={"file_path": file_path})
+
     def delete(self, diary_id: int) -> None:
         self.client.delete(f"{self.base_path}/{diary_id}")
 

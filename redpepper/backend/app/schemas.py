@@ -306,6 +306,8 @@ class KnowledgeBase(BaseModel):
     tags: Optional[str] = Field(default=None, max_length=200)
     summary: Optional[str] = None
     related_stocks: Optional[str] = Field(default=None, max_length=200)
+    content_html: Optional[str] = None
+    content_base_dir: Optional[str] = Field(default=None, max_length=500)
 
 
 class KnowledgeCreate(KnowledgeBase):
@@ -325,6 +327,8 @@ class KnowledgeUpdate(BaseModel):
     tags: Optional[str] = Field(default=None, max_length=200)
     summary: Optional[str] = None
     related_stocks: Optional[str] = Field(default=None, max_length=200)
+    content_html: Optional[str] = None
+    content_base_dir: Optional[str] = Field(default=None, max_length=500)
 
 
 class KnowledgeResponse(KnowledgeBase):

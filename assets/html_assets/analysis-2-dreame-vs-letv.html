@@ -1,0 +1,1048 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>追觅是下一个乐视吗？资本赌局真相拆解</title>
+<style>
+  :root {
+    --bg: #050510;
+    --bg2: #0a0a20;
+    --card: rgba(18,18,38,0.72);
+    --card2: rgba(22,22,48,0.55);
+    --text: #e0e0f0;
+    --text2: #8a8ab0;
+    --text3: #6a6a90;
+    --pink: #ff2d78;
+    --cyan: #00e5ff;
+    --purple: #b347e6;
+    --accent: var(--cyan);
+    --border: rgba(120,100,220,0.25);
+    --glow: 0 0 20px rgba(0,229,255,0.15);
+    --glow-pink: 0 0 20px rgba(255,45,120,0.15);
+    --green: #2cb67d;
+    --orange: #ff9f43;
+    --yellow: #ffd700;
+    --red: #ff2d55;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.7;
+    min-height: 100vh;
+    overflow-x: hidden;
+    padding-bottom: 80px;
+    font-size: 15px;
+  }
+  #particles {
+    position: fixed; top:0; left:0; width:100%; height:100%; z-index:0; pointer-events:none;
+  }
+  .container {
+    position: relative; z-index: 1; max-width: 580px; margin: 0 auto; padding: 16px;
+  }
+
+  /* ===== Topbar ===== */
+  .topbar {
+    position: sticky; top: 0; z-index: 50;
+    background: rgba(5,5,16,0.85);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border-bottom: 1px solid var(--border);
+    margin: -16px -16px 20px;
+    padding: 12px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .topbar .title {
+    font-size: 17px;
+    font-weight: 700;
+    background: linear-gradient(90deg, var(--cyan), var(--purple));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .topbar .badge {
+    font-size: 11px;
+    color: var(--text2);
+    background: var(--card2);
+    padding: 4px 10px;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+  }
+
+  /* ===== Hero ===== */
+  .hero {
+    text-align: center;
+    padding: 16px 0 24px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 24px;
+  }
+  .hero h1 {
+    font-size: 22px;
+    font-weight: 700;
+    line-height: 1.4;
+    background: linear-gradient(135deg, var(--cyan), var(--purple), var(--pink));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: 12px;
+  }
+  .hero .meta {
+    font-size: 12px;
+    color: var(--text3);
+    display: flex;
+    justify-content: center;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+
+  /* ===== Warning Banner ===== */
+  .warning-banner {
+    background: linear-gradient(135deg, rgba(255,45,120,0.1), rgba(255,45,120,0.05));
+    border: 1px solid rgba(255,45,120,0.3);
+    border-radius: 14px;
+    padding: 16px;
+    margin-bottom: 20px;
+    text-align: center;
+  }
+  .warning-banner .wb-title {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--pink);
+    margin-bottom: 8px;
+  }
+  .warning-banner .wb-body {
+    font-size: 13px;
+    color: var(--text2);
+    line-height: 1.7;
+  }
+
+  /* ===== Cards ===== */
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 18px;
+    margin-bottom: 16px;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    transition: border-color 0.3s;
+  }
+  .card:hover { border-color: rgba(120,100,220,0.4); }
+  .card-title {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 14px;
+    font-size: 15px;
+    font-weight: 600;
+  }
+  .card-title span:first-child { color: var(--text); }
+
+  /* ===== Tags ===== */
+  .tag {
+    font-size: 11px;
+    padding: 3px 8px;
+    border-radius: 8px;
+    background: rgba(0,229,255,0.12);
+    color: var(--cyan);
+    border: 1px solid rgba(0,229,255,0.25);
+    white-space: nowrap;
+  }
+  .tag.pink { background: rgba(255,45,120,0.12); color: var(--pink); border-color: rgba(255,45,120,0.25); }
+  .tag.purple { background: rgba(179,71,230,0.12); color: var(--purple); border-color: rgba(179,71,230,0.25); }
+  .tag.green { background: rgba(44,182,125,0.12); color: var(--green); border-color: rgba(44,182,125,0.25); }
+  .tag.orange { background: rgba(255,159,67,0.12); color: var(--orange); border-color: rgba(255,159,67,0.25); }
+  .tag.red { background: rgba(255,45,85,0.12); color: var(--red); border-color: rgba(255,45,85,0.25); }
+
+  /* ===== Note Cards ===== */
+  .note-card {
+    background: rgba(0,229,255,0.06);
+    border: 1px solid rgba(0,229,255,0.15);
+    border-radius: 12px;
+    padding: 12px 14px;
+    font-size: 13px;
+    color: var(--text2);
+    line-height: 1.7;
+    margin-bottom: 14px;
+  }
+  .note-card.pink { background: rgba(255,45,120,0.06); border-color: rgba(255,45,120,0.15); }
+  .note-card.purple { background: rgba(179,71,230,0.06); border-color: rgba(179,71,230,0.15); }
+  .note-card.green { background: rgba(44,182,125,0.06); border-color: rgba(44,182,125,0.15); }
+  .note-card.orange { background: rgba(255,159,67,0.06); border-color: rgba(255,159,67,0.15); }
+
+  /* ===== Section Heading ===== */
+  .section-num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    background: linear-gradient(135deg, var(--cyan), var(--purple));
+    color: #fff;
+    font-size: 13px;
+    font-weight: 700;
+    margin-right: 10px;
+    flex-shrink: 0;
+  }
+  .section-heading {
+    display: flex;
+    align-items: center;
+    font-size: 16px;
+    font-weight: 700;
+    margin: 28px 0 14px;
+    color: var(--text);
+  }
+
+  /* ===== Content ===== */
+  .content p {
+    margin-bottom: 12px;
+    color: var(--text2);
+    font-size: 14px;
+    line-height: 1.8;
+  }
+  .content p strong { color: var(--text); font-weight: 600; }
+  .content .highlight {
+    background: rgba(255,45,120,0.15);
+    color: var(--pink);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-weight: 600;
+  }
+
+  /* ===== Comparison Table ===== */
+  .compare-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 14px 0;
+    font-size: 13px;
+  }
+  .compare-table th {
+    background: var(--bg2);
+    padding: 12px 10px;
+    text-align: left;
+    font-weight: 600;
+    color: var(--text);
+    border: 1px solid var(--border);
+  }
+  .compare-table td {
+    padding: 12px 10px;
+    border: 1px solid var(--border);
+    color: var(--text2);
+    line-height: 1.6;
+  }
+  .compare-table tr:nth-child(even) td {
+    background: rgba(10,10,32,0.4);
+  }
+  .compare-table .leshi td { background: rgba(0,229,255,0.04) !important; }
+  .compare-table .zhuimi td { background: rgba(255,45,120,0.04) !important; }
+
+  /* ===== Data Lists ===== */
+  .data-list {
+    list-style: none;
+    padding: 0;
+    margin: 12px 0;
+  }
+  .data-list li {
+    position: relative;
+    padding: 10px 0 10px 22px;
+    border-bottom: 1px solid var(--border);
+    font-size: 14px;
+    color: var(--text2);
+    line-height: 1.7;
+  }
+  .data-list li:last-child { border-bottom: none; }
+  .data-list li::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 16px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--pink), var(--purple));
+  }
+  .data-list li strong { color: var(--text); }
+
+  /* ===== Numbered List ===== */
+  .num-list {
+    list-style: none;
+    padding: 0;
+    margin: 12px 0;
+    counter-reset: item;
+  }
+  .num-list li {
+    position: relative;
+    padding: 10px 0 10px 36px;
+    border-bottom: 1px solid var(--border);
+    font-size: 14px;
+    color: var(--text2);
+    line-height: 1.7;
+  }
+  .num-list li:last-child { border-bottom: none; }
+  .num-list li::before {
+    counter-increment: item;
+    content: counter(item);
+    position: absolute;
+    left: 0;
+    top: 10px;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--cyan), var(--purple));
+    color: #fff;
+    font-size: 12px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .num-list li strong { color: var(--text); }
+
+  /* ===== Stat Row ===== */
+  .stat-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    margin: 14px 0;
+  }
+  .stat-box {
+    flex: 1;
+    text-align: center;
+    padding: 14px 6px;
+    background: var(--card2);
+    border-radius: 12px;
+    border: 1px solid var(--border);
+  }
+  .stat-box .label {
+    font-size: 11px;
+    color: var(--text2);
+    margin-bottom: 6px;
+  }
+  .stat-box .value {
+    font-size: 16px;
+    font-weight: 700;
+  }
+
+  /* ===== Key Finding ===== */
+  .key-finding {
+    background: linear-gradient(135deg, rgba(0,229,255,0.08), rgba(179,71,230,0.08));
+    border: 1px solid rgba(0,229,255,0.2);
+    border-radius: 14px;
+    padding: 18px;
+    margin: 16px 0;
+  }
+  .key-finding .kf-title {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--cyan);
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .key-finding .kf-body {
+    font-size: 14px;
+    color: var(--text2);
+    line-height: 1.7;
+  }
+  .key-finding .kf-body strong { color: var(--text); }
+
+  /* ===== Highlight Bar ===== */
+  .highlight-bar {
+    border-left: 3px solid var(--cyan);
+    padding-left: 14px;
+    margin: 14px 0;
+    color: var(--text2);
+    font-size: 14px;
+    line-height: 1.7;
+  }
+  .highlight-bar.pink { border-left-color: var(--pink); }
+  .highlight-bar.purple { border-left-color: var(--purple); }
+  .highlight-bar.orange { border-left-color: var(--orange); }
+
+  /* ===== Divider ===== */
+  .divider {
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--border), transparent);
+    margin: 24px 0;
+  }
+
+  /* ===== Timeline ===== */
+  .timeline {
+    position: relative;
+    padding-left: 20px;
+    margin: 14px 0;
+  }
+  .timeline::before {
+    content: '';
+    position: absolute;
+    left: 5px;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: linear-gradient(180deg, var(--cyan), var(--purple), var(--pink));
+    border-radius: 1px;
+  }
+  .timeline-item {
+    position: relative;
+    padding-bottom: 16px;
+  }
+  .timeline-item::before {
+    content: '';
+    position: absolute;
+    left: -19px;
+    top: 4px;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--cyan);
+    border: 2px solid var(--bg);
+  }
+  .timeline-item .t-time {
+    font-size: 12px;
+    color: var(--cyan);
+    font-weight: 600;
+    margin-bottom: 4px;
+  }
+  .timeline-item .t-body {
+    font-size: 13px;
+    color: var(--text2);
+    line-height: 1.6;
+  }
+
+  /* ===== Bottom Nav ===== */
+  .nav-bar {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 100;
+    background: rgba(5,5,16,0.92);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-top: 1px solid var(--border);
+    display: flex;
+    justify-content: space-around;
+    padding: 8px 0 calc(8px + env(safe-area-inset-bottom));
+  }
+  .nav-btn {
+    background: none;
+    border: none;
+    color: var(--text2);
+    font-size: 10px;
+    padding: 4px 6px;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    transition: all 0.2s;
+    text-decoration: none;
+  }
+  .nav-btn.active { color: var(--cyan); }
+
+  /* ===== Scroll Top ===== */
+  .scroll-top {
+    position: fixed;
+    bottom: 70px;
+    right: 16px;
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    background: var(--card);
+    border: 1px solid var(--border);
+    color: var(--cyan);
+    font-size: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: 99;
+    backdrop-filter: blur(10px);
+    transition: all 0.3s;
+    opacity: 0;
+    pointer-events: none;
+  }
+  .scroll-top.visible { opacity: 1; pointer-events: auto; }
+  .scroll-top:hover { border-color: var(--cyan); box-shadow: var(--glow); }
+
+  /* ===== Summary Card ===== */
+  .summary-card {
+    background: linear-gradient(135deg, rgba(255,45,120,0.08), rgba(179,71,230,0.08));
+    border: 1px solid rgba(255,45,120,0.25);
+    border-radius: 16px;
+    padding: 20px;
+    margin: 20px 0;
+  }
+  .summary-card h3 {
+    font-size: 16px;
+    background: linear-gradient(90deg, var(--pink), var(--orange));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: 14px;
+  }
+
+  /* ===== Footer ===== */
+  .footer-note {
+    text-align: center;
+    font-size: 12px;
+    color: var(--text3);
+    margin-top: 8px;
+    margin-bottom: 24px;
+  }
+  .disclaimer {
+    background: rgba(255,193,7,0.06);
+    border: 1px solid rgba(255,193,7,0.2);
+    border-radius: 12px;
+    padding: 14px;
+    margin-top: 20px;
+    font-size: 12px;
+    color: var(--orange);
+    line-height: 1.6;
+  }
+
+  @media (max-width: 480px) {
+    .hero h1 { font-size: 19px; }
+    .compare-table { font-size: 11px; }
+    .compare-table th, .compare-table td { padding: 8px 6px; }
+  }
+</style>
+</head>
+<body>
+<div id="particles"></div>
+
+<div class="container">
+
+  <!-- Topbar -->
+  <div class="topbar">
+    <div class="title">AGI2Rich · 深度拆解</div>
+    <div class="badge">资本观察</div>
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <h1>追觅是下一个乐视吗？<br>背后资本赌局的真相</h1>
+    <div class="meta">
+      <span>Bilibili · 深度分析</span>
+      <span>2026-06</span>
+      <span>企业拆解</span>
+    </div>
+  </div>
+
+  <!-- Warning Banner -->
+  <div class="warning-banner">
+    <div class="wb-title">核心结论：不是乐视2.0，比乐视更危险</div>
+    <div class="wb-body">追觅与乐视最本质的区别——资本属性完全不同。<br>乐视烧的是明星和股民的钱，<strong style="color:var(--pink)">追觅烧的是地方财政的钱</strong>。</div>
+  </div>
+
+  <!-- Intro -->
+  <div class="card">
+    <div class="content">
+      <p>你可能没用过他的扫地机器人，但你一定在电梯里看过他的广告。这家公司最近特别火，火到什么程度？有人说他是下一个华为，也有人说他是下一个乐视，就是那个贾跃亭的乐视。</p>
+      <p>那问题来了，追觅到底是不是下一个乐视？我花了几天时间把这两家公司拆解再对比了一遍，结论可能会让你后背发凉：<strong>它不是乐视2.0，它比乐视更危险</strong>。为什么？四个字：资本属性完全不同。</p>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- Section: Core Comparison -->
+  <div class="section-heading">
+    <span class="section-num"></span>
+    乐视 vs 追觅：四大核心问题
+  </div>
+
+  <!-- Q1 -->
+  <div class="card">
+    <div class="card-title">
+      <span>问题一：钱从哪来？</span>
+      <span class="tag">资金来源</span>
+    </div>
+    <div class="stat-row">
+      <div class="stat-box" style="flex:1.2;">
+        <div class="label">乐视资金来源</div>
+        <div class="value" style="color:var(--cyan);font-size:14px;">私人资本</div>
+      </div>
+      <div class="stat-box" style="flex:1.2;">
+        <div class="label">追觅资金来源</div>
+        <div class="value" style="color:var(--pink);font-size:14px;">地方财政</div>
+      </div>
+    </div>
+    <div class="content">
+      <p><strong style="color:var(--cyan)">乐视烧谁的钱？</strong>答案是私人老板和明星的钱。贾跃亭当年搞七大生态——电视、手机、体育、汽车、金融，什么都做。主要三块：上市公司乐视网从A股股民手里圈钱；明星朋友刘涛投了6000万，孙红雷、贾乃亮也都投了；商界大佬马云、王健林、孙宏斌都当过他的"白衣骑士"。</p>
+      <p>这些钱是什么性质？<strong>私人资本、市场资本</strong>。明星的钱亏了，那是明星自己认栽；股民的钱亏了，那是二级市场的风险；孙宏斌接了盘，最后哭了一场，那也是他自己的钱。</p>
+      <div class="highlight-bar pink">
+        <strong style="color:var(--pink)">追觅烧谁的钱？</strong>答案是地方政府的财政。财政的钱是谁的？是全体纳税人的，是你我交的税，是地方政府的土地出让金，是本来该修路、建学校、发养老金的钱。
+      </div>
+    </div>
+  </div>
+
+  <!-- Q2 -->
+  <div class="card">
+    <div class="card-title">
+      <span>问题二：崩盘谁来兜底？</span>
+      <span class="tag pink">风险承担</span>
+    </div>
+    <div class="content">
+      <p><strong style="color:var(--cyan)">乐视崩盘的时候谁来兜底？</strong>答案是没有人兜底。贾跃亭跑了，股民认栽，明星认栽，孙宏斌哭了一场。这是一个市场化的出清过程，愿赌服输。</p>
+      <div class="note-card pink">
+        <strong style="color:var(--pink)">追觅如果崩盘谁来兜底？</strong><br>
+        如果追觅的几百亿亏了，谁来承担？<strong>每一个中国纳税人来承担</strong>。这不是一个商业风险，这是一个系统性财政风险。
+      </div>
+    </div>
+  </div>
+
+  <!-- Q3 -->
+  <div class="card">
+    <div class="card-title">
+      <span>问题三：钱进了谁的口袋？</span>
+      <span class="tag purple">股权结构</span>
+    </div>
+    <div class="content">
+      <p>追觅有一个核心母公司叫<strong>追觅科技（苏州）有限公司</strong>，做扫地机器人、洗地机这些赚钱的业务，是整个集团的造血心脏，每年利润几十个亿。</p>
+      <div class="note-card">
+        <strong style="color:var(--cyan)">股权结构核心事实：</strong><br>
+        俞浩本人直接加间接持股约<strong style="color:var(--pink)">70%</strong>，早期风投机构和小米系已被俞浩花了几十亿回购。现在这家最赚钱的公司，<strong>100%的股权在俞浩和他的私人伙伴手里。国资一毛钱股份都没有</strong>。
+      </div>
+      <p>赚钱的生意俞浩自己全占，不赚钱的、烧钱的、风险高的新业务，他用地方政府的钱去投资，赚了利润有分成，亏了财政买单。这就是传说中的<span class="highlight">"风险社会化，收益私有化"</span>。</p>
+    </div>
+  </div>
+
+  <!-- Q4 -->
+  <div class="card">
+    <div class="card-title">
+      <span>问题四：为什么妈妈也占股份？</span>
+      <span class="tag red">股权迷宫</span>
+    </div>
+    <div class="content">
+      <p>俞浩设计了一个<strong>四层嵌套的股权迷宫</strong>，每一层的股东都不一样，有员工的持股平台，有早期高管的代持股，还有他妈妈的。</p>
+      <div class="key-finding">
+        <div class="kf-title" style="color:var(--pink)">白美芳是谁？</div>
+        <div class="kf-body">
+          追觅很多分公司的股东名单里有一个名字反复出现：<strong style="color:var(--pink)">白美芳</strong>。这是谁？<strong>俞浩的母亲</strong>。用母亲的名义持股，用员工的名义持股，用各种马甲公司持股。这些公司跟追觅主体没有直接的股权关系，但实际上全部由俞浩控制。
+        </div>
+      </div>
+      <p>为什么这么做？一旦出了事，你要追查这笔钱到底是谁的，追来追去也没有个底。这不是阴谋论，这是已经在工商信息里被媒体挖出来的事实。</p>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- Comparison Table -->
+  <div class="section-heading">
+    <span class="section-num" style="background:linear-gradient(135deg,var(--pink),var(--orange));">VS</span>
+    追觅 vs 乐视 核心对比
+  </div>
+  <div class="card">
+    <div class="card-title">
+      <span>本质区别一览</span>
+      <span class="tag pink">危险信号</span>
+    </div>
+    <div style="overflow-x:auto;">
+      <table class="compare-table">
+        <thead>
+          <tr>
+            <th style="width:25%">维度</th>
+            <th style="width:37.5%;color:var(--cyan)">乐视</th>
+            <th style="width:37.5%;color:var(--pink)">追觅</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="leshi">
+            <td><strong>资金来源</strong></td>
+            <td>明星、股民、商界大佬（私人资本）</td>
+            <td>地方政府财政（纳税人的钱）</td>
+          </tr>
+          <tr class="zhuimi">
+            <td><strong>崩盘兜底</strong></td>
+            <td>无人兜底，市场化出清</td>
+            <td>全体纳税人买单</td>
+          </tr>
+          <tr class="leshi">
+            <td><strong>核心资产归属</strong></td>
+            <td>上市公司（需披露）</td>
+            <td>俞浩私人100%控股</td>
+          </tr>
+          <tr class="zhuimi">
+            <td><strong>信息透明度</strong></td>
+            <td>上市公司，需审计披露</td>
+            <td>非上市，无需公布财报</td>
+          </tr>
+          <tr class="leshi">
+            <td><strong>扩张领域</strong></td>
+            <td>七大生态（电视/手机/体育/汽车/金融）</td>
+            <td>200+事业部（汽车/手机/奶茶/眼镜/飞机）</td>
+          </tr>
+          <tr class="zhuimi">
+            <td><strong>股权结构</strong></td>
+            <td>相对清晰</td>
+            <td>四层嵌套，母亲代持，900+空壳公司</td>
+          </tr>
+          <tr class="leshi">
+            <td><strong>监管约束</strong></td>
+            <td>证监会监管</td>
+            <td>无需对公众负责</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- Section: Expansion -->
+  <div class="section-heading">
+    <span class="section-num">1</span>
+    疯狂扩张：200多个事业部的赌局
+  </div>
+  <div class="card">
+    <div class="card-title">
+      <span>俞浩的跨界版图</span>
+      <span class="tag orange">900+空壳公司</span>
+    </div>
+    <div class="content">
+      <p>俞浩这个人最大的问题不是野心，而是对行业没有敬畏。涉及几十个行业，与华为完全相反。华为是"力出一孔"，把资金弹药投入自己核心技术。做扫地机器人的时候，他可以说自己是技术驱动，但做飞行器、做汽车、做手机、做奶茶、做天文望远镜，他凭什么核心技术优势呢？</p>
+    </div>
+    <div class="note-card orange">
+      <strong style="color:var(--orange)">追觅已涉足的领域（部分）：</strong>
+    </div>
+    <ul class="data-list">
+      <li><strong>智能汽车</strong> — 号称对标布加迪威龙，2027年亮相，至今无造车资质</li>
+      <li><strong>智能手机</strong> — 与核心业务关联度存疑</li>
+      <li><strong>消费级无人机</strong> — 巨头林立的蓝海市场</li>
+      <li><strong>人形机器人</strong> — 具身智能赛道</li>
+      <li><strong>奶茶/咖啡</strong> — 咖啡品牌仅开一家门店便停滞</li>
+      <li><strong>潮玩品牌 DREAME MART</strong> — 运营不足18个月关停</li>
+      <li><strong>AI智能眼镜</strong> — 2026年Q1计划发布</li>
+      <li><strong>天文望远镜</strong> — 令人费解的跨界</li>
+      <li><strong>大家电</strong> — 空调/冰箱/洗衣机全面覆盖</li>
+      <li><strong>消费金融</strong> — 布局借贷业务</li>
+    </ul>
+  </div>
+
+  <!-- Timeline -->
+  <div class="card">
+    <div class="card-title">
+      <span>追觅扩张时间线</span>
+      <span class="tag">关键节点</span>
+    </div>
+    <div class="timeline">
+      <div class="timeline-item">
+        <div class="t-time">2017年</div>
+        <div class="t-body">俞浩创立追觅科技，清华"天空工场"班底，做高速数字马达</div>
+      </div>
+      <div class="timeline-item">
+        <div class="t-time">2018年</div>
+        <div class="t-body">首款无线吸尘器V9上市，众筹破1000万，成为小米生态链供应商</div>
+      </div>
+      <div class="timeline-item">
+        <div class="t-time">2023年</div>
+        <div class="t-body">五年CAGR超100%，营收约150亿，全球扫地机器人市占率第三</div>
+      </div>
+      <div class="timeline-item">
+        <div class="t-time">2025年8月</div>
+        <div class="t-body">高调宣布跨界造车，首款车型对标布加迪威龙</div>
+      </div>
+      <div class="timeline-item">
+        <div class="t-time">2025年9月</div>
+        <div class="t-body">一口气推出30余款新品，空调/冰箱/洗衣机全覆盖</div>
+      </div>
+      <div class="timeline-item">
+        <div class="t-time">2025年12月</div>
+        <div class="t-body">斥资22.82亿收购嘉美包装54.9%股份，"类借壳"上市</div>
+      </div>
+      <div class="timeline-item">
+        <div class="t-time">2026年1月</div>
+        <div class="t-body">CES概念车亮相，宣布千亿营收目标，员工人均1克黄金年终奖</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Car Business -->
+  <div class="card">
+    <div class="card-title">
+      <span>造车：最大的资金黑洞</span>
+      <span class="tag pink">高风险</span>
+    </div>
+    <div class="content">
+      <p>追觅造车号称对标布加迪威龙，2027年亮相，但到现在<strong>连造车资质都没有</strong>，合作伙伴是谁不知道，最近还被冻结了200多万的股权，公司说是商业纠纷，但对一个还没量产的车企来说，这本身就是一个危险信号。</p>
+    </div>
+    <div class="stat-row">
+      <div class="stat-box">
+        <div class="label">小米造车总支出</div>
+        <div class="value" style="color:var(--pink)">300亿+</div>
+      </div>
+      <div class="stat-box">
+        <div class="label">追觅估值</div>
+        <div class="value" style="color:var(--cyan)">200亿</div>
+      </div>
+      <div class="stat-box">
+        <div class="label">追觅IPO估值</div>
+        <div class="value" style="color:var(--purple)">640亿</div>
+      </div>
+    </div>
+    <div class="note-card pink">
+      小米造车总支出已达<strong style="color:var(--pink)">300亿元</strong>，这个数字远超追觅当前估值。而且小米有雄厚的资金实力、雷军超高的流量加持以及市场空位。这些因素对于追觅来说，都如天堑一般。
+    </div>
+  </div>
+
+  <!-- Core Business Warning -->
+  <div class="card">
+    <div class="card-title">
+      <span>基本盘正在被反噬</span>
+      <span class="tag red">品控危机</span>
+    </div>
+    <div class="content">
+      <p>与此同时，他的基本盘扫地机器人正在被消费者反噬。黑猫投诉上，关于追觅扫地机器人的投诉已经超过<strong>数千条</strong>：开不了机、电机坏了、出水失控、售后乱收费。社交平台上已经有人发起<span class="highlight">"全网直播砸追觅"</span>的活动。</p>
+      <div class="highlight-bar pink">
+        你连自己最擅长的产品质量都没有完全做好，你凭什么资格去跨界造梦呢？你的精力、资金、管理能力都在被上百个事业部稀释，核心业务没人管了，品控下来了，口碑崩了，你连扫地机都做不好了，还敢投你的汽车吗？
+      </div>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- Section: Financial -->
+  <div class="section-heading">
+    <span class="section-num">2</span>
+    资本运作：借壳、回购与批量IPO
+  </div>
+
+  <div class="card">
+    <div class="card-title">
+      <span>22.82亿收购嘉美包装</span>
+      <span class="tag purple">类借壳</span>
+    </div>
+    <div class="content">
+      <p>2025年12月16日，嘉美包装公告显示，俞浩将通过旗下持股平台<strong>苏州逐越鸿智科技发展合伙企业</strong>，斥资22.82亿元以"协议转让+主动要约"的方式拿下嘉美包装的控制权。</p>
+      <div class="note-card purple">
+        <strong style="color:var(--purple)">嘉美包装是谁？</strong><br>
+        主营业务是<strong>食品饮料金属包装</strong>，三片罐产品在饮料用金属包装市场占有率约20%，与追觅科技的高科技属性<strong style="color:var(--pink)">相去甚远</strong>。俞浩选择它，看中的显然不是主业盈利能力，而是它作为一个A股上市公司的"壳"价值。
+      </div>
+      <p>尽管公告称不存在36个月内借壳上市的计划，但市场对此并不买账，其股价狂飙背后，正是投资者对俞浩旗下科技资产未来注入的强烈预期。</p>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">
+      <span>股份回购与控制权集中</span>
+      <span class="tag">控制权</span>
+    </div>
+    <div class="content">
+      <p>创始人俞浩在朋友圈回应破产传闻时提及，近两年<strong>个人与公司拿出约50亿元回购老股</strong>，持股比例从45%提升至70%。这也进一步挤占了可用于扩张的资金。</p>
+    </div>
+    <div class="stat-row">
+      <div class="stat-box">
+        <div class="label">回购前持股</div>
+        <div class="value" style="color:var(--text2)">45%</div>
+      </div>
+      <div class="stat-box">
+        <div class="label">回购后持股</div>
+        <div class="value" style="color:var(--pink)">70%</div>
+      </div>
+      <div class="stat-box">
+        <div class="label">回购花费</div>
+        <div class="value" style="color:var(--cyan)">~50亿</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">
+      <span>批量IPO计划</span>
+      <span class="tag green">融资</span>
+    </div>
+    <div class="content">
+      <p>俞浩此前曾公开表示，从<strong>2026年底开始</strong>，追觅生态旗下多个业务将会在全球各交易所<strong>批量IPO</strong>。</p>
+      <div class="highlight-bar">
+        追觅已公开计划于2026年下半年提交IPO申请，目标估值<strong style="color:var(--cyan)">1500亿元</strong>。单纯依靠扫地机器人等清洁主业，增长空间有限，因此追觅有意将自身塑造成一家全场景生态科技企业。
+      </div>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- Section: Personality -->
+  <div class="section-heading">
+    <span class="section-num">3</span>
+    创始人IP：从低调到"疯癫"
+  </div>
+  <div class="card">
+    <div class="card-title">
+      <span>俞浩的流量饱和攻击</span>
+      <span class="tag orange">人设转变</span>
+    </div>
+    <div class="content">
+      <p>一个原本低调的CEO，为何在过去几个月里一步步走到聚光灯正中央，把自己变成一台饱和式内容生产机器？</p>
+    </div>
+    <ul class="num-list">
+      <li><strong>2026年1月</strong> — 从运营团队手中收回微博账号，不到一个月狂发约300条微博</li>
+      <li><strong>4月26日</strong> — 公开炮轰小红书，称其"价值观和盈利模式都有毒"</li>
+      <li><strong>五一前夕</strong> — 下令公司2.2万名员工全部开通自媒体账号，每天发布3条视频</li>
+      <li><strong>5月不到10天</strong> — 个人发了接近500条视频</li>
+      <li><strong>置顶视频</strong> — 自封"中国真正懂汽车设计的只有三人：雷军、余承东和我"</li>
+      <li><strong>提贾跃亭就拉黑</strong> — 评论区一旦有人提起乐视或恒大，选择"拉黑+删除"</li>
+    </ul>
+    <div class="note-card orange" style="margin-top:12px;">
+      <strong style="color:var(--orange)">背后逻辑：</strong>千亿营收的压力 + IPO上市的资本野心 + 跨界造车等新业务面临的融资、知名度焦虑。"疯癫"表象之下，是一场精心设计的商业豪赌。他没有雷军的咖位，追觅也没有小米的粉丝基础，于是选择了"以量换质""以争议换关注"。
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- Final Summary -->
+  <div class="section-heading">
+    <span class="section-num" style="background:linear-gradient(135deg,var(--pink),var(--orange));width:auto;padding:0 10px;">总结</span>
+    这不是一家企业，这是一个财政黑洞
+  </div>
+
+  <div class="summary-card">
+    <h3>核心结论</h3>
+
+    <div class="key-finding" style="border:1px solid rgba(255,45,120,0.3);margin:0 0 12px 0;">
+      <div class="kf-title" style="color:var(--pink)">追觅和乐视最大的区别</div>
+      <div class="kf-body">
+        不是谁更疯狂，而是<strong>谁在买单</strong>。乐视的崩塌是资本的崩塌，追觅的崩塌一旦发生，就是<strong style="color:var(--pink)">财政的崩塌、信用的崩塌、公共利益的崩塌</strong>。
+      </div>
+    </div>
+
+    <ul class="data-list">
+      <li>俞浩用<strong style="color:var(--pink)">20%的自有资金撬动了80%的国有资本</strong></li>
+      <li>用不上市的私人公司控制了一个<strong>几百亿的基金池</strong></li>
+      <li>用妈妈的名字、员工的名字、马甲公司的名字把资产藏得严严实实</li>
+      <li>赚钱的业务自己全拿，烧钱的业务让财政兜底</li>
+      <li><strong>900多家空壳公司</strong>构建四层嵌套股权迷宫</li>
+      <li><strong>200多个事业部</strong>同时在几十个行业烧钱</li>
+      <li>核心基本盘扫地机器人的<strong style="color:var(--pink)">品控正在崩坏</strong></li>
+    </ul>
+
+    <div class="divider" style="margin:16px 0;background:linear-gradient(90deg,transparent,rgba(255,45,120,0.3),transparent);"></div>
+
+    <div class="content" style="margin-top:12px;">
+      <p>这不是一个企业家，这是一个资本玩家，而且是一个非常非常危险的玩家。我今天说这些不是要唱衰追觅，我也想看到中国出现世界级的科技企业，但前提是他得是健康的、透明的，对得起拿的每一分钱的。</p>
+      <p>如果一家公司靠的是花纳税人的钱去赌一个又一个不靠谱的风口，输了算国家的，赢了算自己的，那他跟贾跃亭有什么区别？</p>
+      <div class="highlight-bar pink">
+        不，其实比贾跃亭更可怕，因为<strong style="color:var(--pink)">贾跃亭割的是韭菜，而追觅割的是整个社会纳税人的钱</strong>。
+      </div>
+      <p>有人说，追觅会不会成为下一个乐视？我的回答是，如果他继续用这套"收益私有化、风险社会化"的玩法，他不一定会成为乐视，但他一定会成为一个更大的麻烦。一个不上市的私人企业，手握几百亿的政府资金，200多个事业部，四层股权嵌套，妈妈持股、员工马甲，核心业务自己独吞，外围亏损财政买单。</p>
+      <p>这套玩法能走多远，我不得而知，但我知道的是，如果有一天他崩了，<strong>你和我都逃不掉</strong>。更可能的是，他会成为地方招商引资史上最大的一笔学费，一场由资本玩家和政绩冲动的地方官员共同导演、最终由全体纳税人买单的豪赌。</p>
+    </div>
+  </div>
+
+  <!-- Disclaimer -->
+  <div class="disclaimer">
+    <strong>免责声明：</strong>本文内容来源于网络公开信息和媒体报道的分析整理，仅代表作者观点，不构成任何投资建议。涉及企业相关信息以官方披露为准。如有数据和分析错误的地方，欢迎批评指正。
+  </div>
+
+  <div class="footer-note">
+    内容整理自 Bilibili 视频及公开媒体报道<br>
+    AGI2Rich · 深度拆解
+  </div>
+
+</div>
+
+<!-- Scroll Top -->
+<button class="scroll-top" id="scrollTop" onclick="window.scrollTo({top:0,behavior:'smooth'})">&#8593;</button>
+
+<!-- Bottom Nav -->
+<div class="nav-bar">
+  <button class="nav-btn active" onclick="window.scrollTo({top:0,behavior:'smooth'})">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+    顶部
+  </button>
+  <button class="nav-btn" onclick="document.querySelectorAll('.section-heading')[1].scrollIntoView({behavior:'smooth'})">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+    对比
+  </button>
+  <button class="nav-btn" onclick="document.querySelectorAll('.section-heading')[2].scrollIntoView({behavior:'smooth'})">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+    扩张
+  </button>
+  <button class="nav-btn" onclick="document.querySelectorAll('.section-heading')[3].scrollIntoView({behavior:'smooth'})">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+    资本
+  </button>
+  <button class="nav-btn" onclick="document.querySelector('.summary-card').scrollIntoView({behavior:'smooth'})">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+    结论
+  </button>
+</div>
+
+<script>
+// ===== Particle Background =====
+const canvas = document.createElement('canvas');
+canvas.id = 'particle-canvas';
+document.getElementById('particles').appendChild(canvas);
+const ctx = canvas.getContext('2d');
+
+let W, H;
+function resize() {
+  W = canvas.width = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+}
+resize();
+window.addEventListener('resize', resize);
+
+const PARTICLES = 60;
+const particles = [];
+for (let i = 0; i < PARTICLES; i++) {
+  particles.push({
+    x: Math.random() * W,
+    y: Math.random() * H,
+    vx: (Math.random() - 0.5) * 0.3,
+    vy: (Math.random() - 0.5) * 0.3,
+    r: Math.random() * 1.5 + 0.5,
+    color: Math.random() > 0.5 ? 'rgba(0,229,255,' : 'rgba(179,71,230,'
+  });
+}
+
+function drawParticles() {
+  ctx.clearRect(0, 0, W, H);
+  for (let i = 0; i < PARTICLES; i++) {
+    const p = particles[i];
+    p.x += p.vx;
+    p.y += p.vy;
+    if (p.x < 0 || p.x > W) p.vx *= -1;
+    if (p.y < 0 || p.y > H) p.vy *= -1;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+    ctx.fillStyle = p.color + (Math.random() * 0.3 + 0.1) + ')';
+    ctx.fill();
+  }
+  for (let i = 0; i < PARTICLES; i++) {
+    for (let j = i + 1; j < PARTICLES; j++) {
+      const dx = particles[i].x - particles[j].x;
+      const dy = particles[i].y - particles[j].y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < 120) {
+        ctx.beginPath();
+        ctx.moveTo(particles[i].x, particles[i].y);
+        ctx.lineTo(particles[j].x, particles[j].y);
+        ctx.strokeStyle = 'rgba(120,100,220,' + (0.08 * (1 - dist / 120)) + ')';
+        ctx.lineWidth = 0.5;
+        ctx.stroke();
+      }
+    }
+  }
+  requestAnimationFrame(drawParticles);
+}
+drawParticles();
+
+// ===== Scroll Top Button =====
+const scrollTopBtn = document.getElementById('scrollTop');
+window.addEventListener('scroll', () => {
+  if (window.scrollY > 400) {
+    scrollTopBtn.classList.add('visible');
+  } else {
+    scrollTopBtn.classList.remove('visible');
+  }
+});
+</script>
+
+</body>
+</html>

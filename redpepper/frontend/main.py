@@ -10,6 +10,53 @@ from pathlib import Path
 import urllib.error
 import urllib.request
 
+
+def _bootstrap_qt_plugin_paths() -> None:
+    """Best-effort Qt plugin path bootstrap for Windows environments.
+
+    Some conda/pip mixed setups may leave Qt looking at a non-existing plugin
+    path (e.g. site-packages/PyQt6/Qt6/plugins). This guard points Qt to a
+    valid plugins directory before QApplication is created.
+    """
+    if os.name != "nt":
+        return
+
+    plugin_roots = [
+        Path(sys.prefix) / "Library" / "lib" / "qt6" / "plugins",
+        Path(sys.prefix) / "Library" / "plugins",
+        Path(sys.prefix) / "Lib" / "site-packages" / "PyQt6" / "Qt6" / "plugins",
+    ]
+    plugin_root = next((p for p in plugin_roots if (p / "platforms").exists()), None)
+    if plugin_root is None:
+        return
+
+    qpa_dir = plugin_root / "platforms"
+
+    curr_qpa = os.environ.get("QT_QPA_PLATFORM_PLUGIN_PATH", "")
+    if not curr_qpa or not Path(curr_qpa).exists():
+        os.environ["QT_QPA_PLATFORM_PLUGIN_PATH"] = str(qpa_dir)
+
+    curr_plugin = os.environ.get("QT_PLUGIN_PATH", "")
+    if not curr_plugin or not Path(curr_plugin).exists():
+        os.environ["QT_PLUGIN_PATH"] = str(plugin_root)
+
+    bin_candidates = [
+        Path(sys.prefix) / "Library" / "bin",
+        Path(sys.prefix) / "Lib" / "site-packages" / "PyQt6" / "Qt6" / "bin",
+    ]
+    for bin_dir in bin_candidates:
+        if not bin_dir.exists():
+            continue
+        os.environ["PATH"] = str(bin_dir) + os.pathsep + os.environ.get("PATH", "")
+        try:
+            os.add_dll_directory(str(bin_dir))
+        except Exception:
+            pass
+        break
+
+
+_bootstrap_qt_plugin_paths()
+
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont, QPalette, QColor, QIcon

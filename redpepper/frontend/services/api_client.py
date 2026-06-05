@@ -26,7 +26,12 @@ class APIClient:
         return self._client
 
     def _build_timeout(self, path: str | None = None) -> httpx.Timeout:
-        if path and ("/ocr" in path or "/import-csv" in path or "/import-items" in path):
+        if path and (
+            "/ocr" in path
+            or "/import-csv" in path
+            or "/import-items" in path
+            or "/import/html" in path
+        ):
             return httpx.Timeout(connect=5.0, read=900.0, write=90.0, pool=60.0)
         return httpx.Timeout(connect=5.0, read=max(self.timeout, 30.0), write=30.0, pool=30.0)
 

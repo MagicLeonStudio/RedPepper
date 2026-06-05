@@ -22,7 +22,7 @@ from backend.app.routers import (
 # ------------------------------------------------------------------ #
 app = FastAPI(
     title="RedPepper API",
-    version="0.0.3",
+    version="0.0.5",
     description="Backend API for the RedPepper investment management system.",
 )
 

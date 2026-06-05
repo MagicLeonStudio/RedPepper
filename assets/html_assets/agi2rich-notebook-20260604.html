@@ -1,0 +1,1584 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>AGI2Rich · Investment Tracker</title>
+<style>
+  :root {
+    --bg: #050510;
+    --bg2: #0a0a20;
+    --card: rgba(18,18,38,0.72);
+    --card2: rgba(22,22,48,0.55);
+    --text: #e0e0f0;
+    --text2: #8a8ab0;
+    --pink: #ff2d78;
+    --cyan: #00e5ff;
+    --purple: #b347e6;
+    --accent: var(--cyan);
+    --border: rgba(120,100,220,0.25);
+    --glow: 0 0 20px rgba(0,229,255,0.15);
+    --glow-pink: 0 0 20px rgba(255,45,120,0.15);
+    --green: #2cb67d;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.5;
+    min-height: 100vh;
+    overflow-x: hidden;
+    padding-bottom: 90px;
+  }
+  #particles { position: fixed; top:0; left:0; width:100%; height:100%; z-index:0; pointer-events:none; }
+  .container { position: relative; z-index: 1; max-width: 520px; margin: 0 auto; padding: 16px; }
+
+  .topbar {
+    position: sticky; top: 0; z-index: 50;
+    background: rgba(5,5,16,0.85);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border-bottom: 1px solid var(--border);
+    margin: -16px -16px 16px;
+    padding: 12px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .topbar .title {
+    font-size: 18px;
+    font-weight: 700;
+    background: linear-gradient(90deg, var(--cyan), var(--purple));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .topbar .badge {
+    font-size: 11px;
+    color: var(--text2);
+    background: var(--card2);
+    padding: 4px 10px;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+  }
+
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 16px;
+    margin-bottom: 14px;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+  .card-title {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+    font-size: 15px;
+    font-weight: 600;
+  }
+  .card-title span:first-child { color: var(--text); }
+
+  .tag {
+    font-size: 11px;
+    padding: 3px 8px;
+    border-radius: 8px;
+    background: rgba(0,229,255,0.12);
+    color: var(--cyan);
+    border: 1px solid rgba(0,229,255,0.25);
+  }
+  .tag.pink { background: rgba(255,45,120,0.12); color: var(--pink); border-color: rgba(255,45,120,0.25); }
+  .tag.purple { background: rgba(179,71,230,0.12); color: var(--purple); border-color: rgba(179,71,230,0.25); }
+
+  .nav-bar {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 100;
+    background: rgba(5,5,16,0.92);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-top: 1px solid var(--border);
+    display: flex;
+    justify-content: space-around;
+    padding: 8px 0 calc(8px + env(safe-area-inset-bottom));
+  }
+  .nav-btn {
+    background: none;
+    border: none;
+    color: var(--text2);
+    font-size: 11px;
+    padding: 4px 8px;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    transition: all 0.2s;
+  }
+  .nav-btn.active { color: var(--cyan); }
+  .nav-btn::before {
+    content: '';
+    width: 20px;
+    height: 20px;
+    border-radius: 6px;
+    background: var(--text2);
+    opacity: 0.3;
+    transition: all 0.2s;
+  }
+  .nav-btn.active::before {
+    background: var(--cyan);
+    opacity: 1;
+    box-shadow: var(--glow);
+  }
+
+  .holding-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .holding-item:last-child { border-bottom: none; }
+  .holding-info { flex: 1; }
+  .holding-info .name { font-size: 15px; font-weight: 600; color: var(--text); }
+  .holding-info .meta { font-size: 11px; color: var(--text2); margin-top: 2px; }
+  .holding-data { text-align: right; }
+  .holding-data .value { font-size: 15px; font-weight: 700; }
+  .holding-data .change { font-size: 12px; margin-top: 2px; }
+  .profit { color: var(--pink); }
+  .loss { color: var(--green); }
+
+  .form-group { margin-bottom: 12px; }
+  .form-group label { display: block; font-size: 12px; color: var(--text2); margin-bottom: 4px; }
+  .form-group input,
+  .form-group textarea,
+  .form-group select {
+    width: 100%;
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 12px;
+    color: var(--text);
+    font-size: 14px;
+    outline: none;
+  }
+  .form-group textarea { min-height: 80px; resize: vertical; }
+
+  .btn {
+    border: none;
+    border-radius: 10px;
+    padding: 10px 16px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .btn-primary {
+    background: linear-gradient(135deg, var(--cyan), var(--purple));
+    color: #fff;
+    width: 100%;
+  }
+  .btn-sm { padding: 6px 10px; font-size: 12px; }
+  .btn-danger { background: rgba(255,45,120,0.15); color: var(--pink); border: 1px solid rgba(255,45,120,0.3); }
+
+  .sub-tabs {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 14px;
+  }
+  .sub-tab {
+    flex: 1;
+    text-align: center;
+    padding: 8px;
+    border-radius: 10px;
+    background: var(--card2);
+    border: 1px solid var(--border);
+    color: var(--text2);
+    font-size: 13px;
+    cursor: pointer;
+  }
+  .sub-tab.active {
+    background: rgba(0,229,255,0.12);
+    color: var(--cyan);
+    border-color: rgba(0,229,255,0.3);
+  }
+
+  .watch-item {
+    padding: 12px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .watch-item:last-child { border-bottom: none; }
+  .watch-item .row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+  }
+  .watch-item .reason {
+    font-size: 12px;
+    color: var(--text2);
+    line-height: 1.6;
+  }
+
+  .check-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .check-item:last-child { border-bottom: none; }
+  .check-item input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    margin-top: 2px;
+    accent-color: var(--cyan);
+  }
+  .check-item .text { flex: 1; font-size: 13px; }
+  .check-item .text b { color: var(--text); }
+
+  .note-card {
+    background: rgba(0,229,255,0.06);
+    border: 1px solid rgba(0,229,255,0.15);
+    border-radius: 10px;
+    padding: 10px 12px;
+    font-size: 12px;
+    color: var(--text2);
+    line-height: 1.6;
+    margin-bottom: 10px;
+  }
+  .note-card.pink { background: rgba(255,45,120,0.06); border-color: rgba(255,45,120,0.15); }
+  .note-card.purple { background: rgba(179,71,230,0.06); border-color: rgba(179,71,230,0.15); }
+
+  .empty { text-align: center; padding: 40px 20px; color: var(--text2); font-size: 13px; }
+
+  .stat-row {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 10px;
+  }
+  .stat-box {
+    flex: 1;
+    text-align: center;
+    padding: 14px 8px;
+    background: var(--card2);
+    border-radius: 12px;
+    margin: 0 4px;
+    border: 1px solid var(--border);
+  }
+  .stat-box .label { font-size: 11px; color: var(--text2); margin-bottom: 4px; }
+  .stat-box .value { font-size: 18px; font-weight: 700; }
+
+  .progress-bar {
+    height: 6px;
+    background: var(--bg2);
+    border-radius: 3px;
+    margin-top: 6px;
+    overflow: hidden;
+  }
+  .progress-fill {
+    height: 100%;
+    border-radius: 3px;
+    background: linear-gradient(90deg, var(--cyan), var(--purple));
+  }
+
+  .modal-overlay {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.7);
+    z-index: 200;
+    display: none;
+    align-items: flex-end;
+    justify-content: center;
+    padding: 0 16px 20px;
+  }
+  .modal-overlay.active { display: flex; }
+  .modal {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 20px;
+    width: 100%;
+    max-width: 480px;
+    max-height: 80vh;
+    overflow-y: auto;
+  }
+  .modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+  }
+  .modal-header h3 { font-size: 16px; }
+  .close-btn {
+    background: none;
+    border: none;
+    color: var(--text2);
+    font-size: 20px;
+    cursor: pointer;
+  }
+
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<div id="particles"></div>
+<div class="container">
+
+  <div class="topbar">
+    <div class="title">AGI2Rich</div>
+    <div class="badge" id="topBadge">双账户</div>
+  </div>
+
+  <div style="font-size:13px; color:var(--text2); margin-bottom:12px; text-align:center" id="todayDate"></div>
+
+  <!-- ====== DASHBOARD ====== -->
+  <div id="tab-dashboard">
+    <div class="stat-row">
+      <div class="stat-box">
+        <div class="label">总资产</div>
+        <div class="value" style="color:var(--cyan)">¥50,421</div>
+      </div>
+      <div class="stat-box">
+        <div class="label">累计收益</div>
+        <div class="value" style="color:var(--pink)">+¥2,839</div>
+      </div>
+      <div class="stat-box">
+        <div class="label">今日</div>
+        <div class="value" style="color:var(--green)">+¥335</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">
+        <span>账户结构</span>
+        <span class="tag">实时</span>
+      </div>
+      <div style="display:flex; justify-content:space-between; font-size:13px; margin-bottom:8px">
+        <span>股票/ETF（中信）</span>
+        <span style="color:var(--cyan); font-weight:600">¥38,108</span>
+      </div>
+      <div class="progress-bar"><div class="progress-fill" style="width:76%"></div></div>
+      <div style="display:flex; justify-content:space-between; font-size:13px; margin-top:12px; margin-bottom:8px">
+        <span>基金（同花顺）</span>
+        <span style="color:var(--purple); font-weight:600">¥12,313</span>
+      </div>
+      <div class="progress-bar"><div class="progress-fill" style="width:24%; background:linear-gradient(90deg, var(--purple), var(--pink))"></div></div>
+
+      <div class="note-card pink" style="margin-top:14px">
+        <b style="color:var(--pink)">⚠ 集中度警报</b><br>
+        持仓总市值约 ¥36,264，其中科技/数字经济方向占比约 <b>95%</b>，缺乏行业分散。通信ETF高位小幅回调-0.47%，科创芯片延续强势+1.43%浮盈扩大至+987.70。纳指ETF受隔夜美股调整-2.57%，云计算50继续承压-1.81%。机器人E微涨+0.65%亏损收窄至-132.50。同花顺基金T+1确认6/3收益+261.24，永赢数字经济C持有收益大幅回升至-56.45。条件单监控中：科创芯片≤3.2买入/3.9止盈3.3止损（有效期至07-28），机器人E≤1.510买入/1.600止盈（有效期至06-07），电力ETF≤1.220买入（有效期至06-06）。建议配置电力/消费等防御仓位。
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">
+        <span>核心持仓表现</span>
+        <span class="tag">TOP3</span>
+      </div>
+      <div class="holding-item">
+        <div class="holding-info">
+          <div class="name">永赢科技</div>
+          <div class="meta">光模块/AI算力</div>
+        </div>
+        <div class="holding-data">
+          <div class="value profit">+56.7%</div>
+          <div class="change">+869.43</div>
+        </div>
+      </div>
+      <div class="holding-item">
+        <div class="holding-info">
+          <div class="name">纳指ETF</div>
+          <div class="meta">纳斯达克100</div>
+        </div>
+        <div class="holding-data">
+          <div class="value profit">+22.2%</div>
+          <div class="change">+402.60</div>
+        </div>
+      </div>
+      <div class="holding-item">
+        <div class="holding-info">
+          <div class="name">科创芯片</div>
+          <div class="meta">半导体设备龙头</div>
+        </div>
+        <div class="holding-data">
+          <div class="value profit">+9.7%</div>
+          <div class="change">+987.70</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title"><span>快速操作</span></div>
+      <div style="display:flex; gap:8px">
+        <button class="btn btn-primary" style="flex:1" onclick="switchTab('holdings')">查看持仓</button>
+        <button class="btn btn-primary" style="flex:1" onclick="switchTab('checklist')">交易检查</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====== HOLDINGS ====== -->
+  <div id="tab-holdings" class="hidden">
+    <div class="sub-tabs">
+      <div class="sub-tab active" id="btn-stock" onclick="switchSubTab('stock')">股票/ETF</div>
+      <div class="sub-tab" id="btn-fund" onclick="switchSubTab('fund')">基金</div>
+    </div>
+
+    <div id="sub-stock">
+      <div class="card">
+        <div class="card-title">
+          <span>股票/ETF持仓</span>
+          <button class="btn btn-sm btn-primary" style="width:auto; padding:6px 12px" onclick="openStockModal()">+ 添加</button>
+        </div>
+        <div id="stockHoldingsList"></div>
+      </div>
+    </div>
+    <div id="sub-fund" class="hidden">
+      <div class="card">
+        <div class="card-title">
+          <span>基金持仓</span>
+          <button class="btn btn-sm btn-primary" style="width:auto; padding:6px 12px" onclick="openFundModal()">+ 添加</button>
+        </div>
+        <div id="fundHoldingsList"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====== WATCHLIST ====== -->
+  <div id="tab-watchlist" class="hidden">
+    <div class="sub-tabs">
+      <div class="sub-tab active" id="wbtn-stock" onclick="switchWatchTab('stock')">股票观察</div>
+      <div class="sub-tab" id="wbtn-fund" onclick="switchWatchTab('fund')">基金观察</div>
+    </div>
+
+    <div id="watch-stock">
+      <div class="card">
+        <div class="card-title">
+          <span>股票/ETF观察池</span>
+          <button class="btn btn-sm btn-primary" style="width:auto; padding:6px 12px" onclick="openStockWatchModal()">+ 添加</button>
+        </div>
+        <div id="stockWatchList"></div>
+      </div>
+    </div>
+    <div id="watch-fund" class="hidden">
+      <div class="card">
+        <div class="card-title">
+          <span>基金观察池</span>
+          <button class="btn btn-sm btn-primary" style="width:auto; padding:6px 12px" onclick="openFundWatchModal()">+ 添加</button>
+        </div>
+        <div id="fundWatchList"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====== CHECKLIST ====== -->
+  <div id="tab-checklist" class="hidden">
+    <div class="card">
+      <div class="card-title">
+        <span>买入前强制清单</span>
+        <span class="tag pink">必须全勾</span>
+      </div>
+      <div class="note-card">不满足任何一条 → 禁止下单。这不是建议，是规矩。</div>
+      <div id="checklistItems"></div>
+    </div>
+  </div>
+
+  <!-- ====== LOGS ====== -->
+  <div id="tab-logs" class="hidden">
+    <div class="card">
+      <div class="card-title">
+        <span>操作日志</span>
+        <span class="tag">记录</span>
+      </div>
+      <div id="logList"></div>
+      <div style="margin-top:12px; border-top:1px solid var(--border); padding-top:12px">
+        <div class="form-group"><label>日期</label><input type="date" id="lDate"></div>
+        <div class="form-group"><label>标的名称</label><input type="text" id="lName" placeholder="如 通信ETF"></div>
+        <div class="form-group">
+          <label>操作</label>
+          <select id="lAction">
+            <option value="买入">买入</option>
+            <option value="卖出">卖出</option>
+            <option value="计划买入">计划买入</option>
+            <option value="计划卖出">计划卖出</option>
+            <option value="持有观察">持有观察</option>
+          </select>
+        </div>
+        <div class="form-group"><label>金额/份额</label><input type="number" id="lAmount" placeholder="0.00"></div>
+        <div class="form-group"><label>理由</label><textarea id="lReason" placeholder="为什么做这个操作？"></textarea></div>
+        <button class="btn btn-primary" onclick="saveLog()">记录操作</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====== DATA EXPORT / IMPORT ====== -->
+  <div id="tab-data" class="hidden">
+    <div class="card">
+      <div class="card-title">
+        <span>数据备份与恢复</span>
+        <span class="tag pink">重要</span>
+      </div>
+      <div class="note-card pink">
+        <b>为什么需要这个？</b><br>
+        你在浏览器里修改的持仓、简报、日志都存在 <b>LocalStorage</b> 里，下载HTML文件不包含这些修改。<br><br>
+        <b>使用方法：</b><br>
+        ① 改完数据后 → 点击下方「导出JSON」→ 复制全部内容<br>
+        ② 把JSON内容发给我 → 我同步进HTML源码<br>
+        ③ 换设备或清缓存后 → 用「导入JSON」恢复
+      </div>
+
+      <div style="margin-top:16px">
+        <button class="btn btn-primary" onclick="exportData()">📤 导出当前数据为JSON</button>
+      </div>
+      <div class="form-group" style="margin-top:12px">
+        <label>JSON 数据（导出/导入用）</label>
+        <textarea id="dataJsonBox" style="min-height:200px;font-family:monospace;font-size:11px" placeholder="点击「导出」后数据会出现在这里，或粘贴JSON后点击「导入」"></textarea>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-primary" style="flex:1" onclick="importData()">📥 导入JSON覆盖当前数据</button>
+        <button class="btn btn-danger" style="flex:1" onclick="clearAllData()">🗑 清空所有本地数据</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====== DIARY ====== -->
+  <div id="tab-diary" class="hidden">
+    <div class="card">
+      <div class="card-title">
+        <span>投资日记</span>
+        <span class="tag purple">每周一篇</span>
+      </div>
+      <div class="note-card purple">每周日写。不是流水账，是对自己决策的复盘。</div>
+      <div id="diaryList"></div>
+      <div style="margin-top:12px; border-top:1px solid var(--border); padding-top:12px">
+        <div class="form-group"><label>日期</label><input type="date" id="diaryDate"></div>
+        <div class="form-group"><label>本周最满意的操作</label><textarea id="diaryBest" placeholder="哪笔交易做得对？为什么？"></textarea></div>
+        <div class="form-group"><label>本周最蠢的操作</label><textarea id="diaryWorst" placeholder="哪笔交易后悔了？当时怎么想的？"></textarea></div>
+        <div class="form-group"><label>决策复盘</label><textarea id="diaryReflect" placeholder="这些操作是基于计划还是临时起意？情绪驱动还是逻辑驱动？"></textarea></div>
+        <div class="form-group"><label>下周唯一关注</label><textarea id="diaryFocus" placeholder="下周我唯一需要盯的一件事是什么？"></textarea></div>
+        <button class="btn btn-primary" onclick="saveDiary()">保存日记</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====== 每日简报 ====== -->
+  <div id="tab-brief" class="hidden">
+    <div class="card">
+      <div class="card-title">
+        <span>自动推送任务</span>
+        <span class="tag">已配置</span>
+      </div>
+      <div style="font-size:12px; color:var(--text2); line-height:1.8">
+        <b style="color:var(--cyan)">09:29</b> A股开盘提醒 — ETF行情速览<br>
+        <b style="color:var(--cyan)">12:00</b> AI每日新闻与板块分析 — 海外+国内各3条<br>
+        <b style="color:var(--cyan)">15:04</b> A股收盘总结 — 市场日报<br>
+        <div style="margin-top:8px; font-size:11px; color:var(--text2); opacity:0.7">注：定时任务超时未推送时，可点击下方"补录"手动补充。</div>
+      </div>
+    </div>
+
+    <div id="todayPushCard" style="margin-top:14px"></div>
+
+    <div id="briefHistory"></div>
+
+    <div class="card" style="margin-top:16px">
+      <div class="card-title">
+        <span>补录今日简报</span>
+        <span class="tag pink">手动</span>
+      </div>
+      <div class="note-card cyan">定时任务未推送或需要补充时，在此手动记录今日关键事件。</div>
+      <div class="form-group"><label>日期</label><input type="date" id="briefDate"></div>
+      <div class="form-group"><label>简报标题</label><input type="text" id="briefTitle" placeholder="如 05-20 AI新闻与板块分析"></div>
+      <div class="form-group"><label>海外关键事件</label><textarea id="briefOverseas" placeholder="如 谷歌I/O发布AI助手；英伟达财报预期升温..."></textarea></div>
+      <div class="form-group"><label>国内关键事件</label><textarea id="briefDomestic" placeholder="如 小米玄戒O1芯片3nm量产；DeepSeek大额融资..."></textarea></div>
+      <div class="form-group"><label>市场走势 / 持仓影响</label><textarea id="briefMarket" placeholder="如 科创50涨2%创历史新高，芯片产业链爆发，持仓全线受益..."></textarea></div>
+      <div class="form-group"><label>综合判断</label><input type="text" id="briefSummary" placeholder="如 芯片产业链全面爆发，短线注意过热风险"></div>
+      <button class="btn btn-primary" onclick="saveBrief()">保存简报</button>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <div class="card-title">
+        <span>事件日历</span>
+        <span class="tag pink">手动维护</span>
+      </div>
+      <div class="note-card">把已知的、可能影响持仓的重大事件写在这里。提前3天开始盯。</div>
+      <div id="eventList"></div>
+      <div style="margin-top:12px; border-top:1px solid var(--border); padding-top:12px">
+        <div class="form-group"><label>日期</label><input type="date" id="eventDate"></div>
+        <div class="form-group"><label>事件描述</label><input type="text" id="eventDesc" placeholder="如 长鑫科技IPO上会"></div>
+        <div class="form-group"><label>影响板块/持仓</label><input type="text" id="eventImpact" placeholder="如 半导体设备、永赢数字经济C"></div>
+        <div class="form-group">
+          <label>重要程度</label>
+          <select id="eventLevel">
+            <option value="高">高 — 可能引发大幅波动</option>
+            <option value="中" selected>中 — 值得跟踪</option>
+            <option value="低">低 — 参考即可</option>
+          </select>
+        </div>
+        <button class="btn btn-primary" onclick="saveEvent()">添加事件</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Modals -->
+<div class="modal-overlay" id="stockHoldingModal">
+  <div class="modal">
+    <div class="modal-header"><h3>添加股票/ETF</h3><button class="close-btn" onclick="closeModal('stockHoldingModal')">&times;</button></div>
+    <div class="form-group"><label>代码</label><input type="text" id="hCode" placeholder="如 510300"></div>
+    <div class="form-group"><label>名称</label><input type="text" id="hName" placeholder="如 沪深300ETF"></div>
+    <div class="form-group"><label>类型</label><select id="hType"><option value="ETF">ETF</option><option value="股票">股票</option></select></div>
+    <div class="form-group"><label>持仓金额</label><input type="number" id="hAmount" placeholder="0.00"></div>
+    <div class="form-group"><label>累计收益</label><input type="number" id="hProfit" placeholder="0.00"></div>
+    <div class="form-group"><label>关注原因</label><textarea id="hReason" placeholder="为什么持有？"></textarea></div>
+    <div class="form-group"><label>操作目标</label><input type="text" id="hTarget" placeholder="如 持有到XX价位"></div>
+    <button class="btn btn-primary" onclick="saveStockHolding()">保存</button>
+  </div>
+</div>
+
+<div class="modal-overlay" id="fundHoldingModal">
+  <div class="modal">
+    <div class="modal-header"><h3>添加基金</h3><button class="close-btn" onclick="closeModal('fundHoldingModal')">&times;</button></div>
+    <div class="form-group"><label>代码</label><input type="text" id="fhCode" placeholder="如 022364"></div>
+    <div class="form-group"><label>名称</label><input type="text" id="fhName" placeholder="如 永赢科技智选"></div>
+    <div class="form-group"><label>持仓金额</label><input type="number" id="fhAmount" placeholder="0.00"></div>
+    <div class="form-group"><label>累计收益</label><input type="number" id="fhProfit" placeholder="0.00"></div>
+    <div class="form-group"><label>今日收益</label><input type="number" id="fhToday" placeholder="0.00"></div>
+    <div class="form-group"><label>关注原因</label><textarea id="fhReason" placeholder="为什么持有？"></textarea></div>
+    <div class="form-group"><label>操作目标</label><input type="text" id="fhTarget" placeholder="如 核心仓位长期持有"></div>
+    <button class="btn btn-primary" onclick="saveFundHolding()">保存</button>
+  </div>
+</div>
+
+<div class="modal-overlay" id="stockWatchModal">
+  <div class="modal">
+    <div class="modal-header"><h3>添加股票/ETF观察</h3><button class="close-btn" onclick="closeModal('stockWatchModal')">&times;</button></div>
+    <div class="form-group"><label>代码</label><input type="text" id="swCode" placeholder="如 000938"></div>
+    <div class="form-group"><label>名称</label><input type="text" id="swName" placeholder="如 烽火通信"></div>
+    <div class="form-group"><label>关注原因</label><textarea id="swReason" placeholder="为什么关注？"></textarea></div>
+    <div class="form-group"><label>买入触发条件</label><input type="text" id="swTrigger" placeholder="如 回调到20日线"></div>
+    <div class="form-group"><label>评级</label><select id="swRating"><option value="⭐⭐⭐⭐⭐">⭐⭐⭐⭐⭐ 强烈关注</option><option value="⭐⭐⭐⭐">⭐⭐⭐⭐ 重点跟踪</option><option value="⭐⭐⭐" selected>⭐⭐⭐ 值得观察</option><option value="⭐⭐">⭐⭐ 参考</option><option value="⭐">⭐ 了解</option></select></div>
+    <button class="btn btn-primary" onclick="saveStockWatch()">保存</button>
+  </div>
+</div>
+
+<div class="modal-overlay" id="fundWatchModal">
+  <div class="modal">
+    <div class="modal-header"><h3>添加基金观察</h3><button class="close-btn" onclick="closeModal('fundWatchModal')">&times;</button></div>
+    <div class="form-group"><label>代码</label><input type="text" id="fwCode" placeholder="如 007639"></div>
+    <div class="form-group"><label>名称</label><input type="text" id="fwName" placeholder="如 汇添富竞争优势"></div>
+    <div class="form-group"><label>关注原因</label><textarea id="fwReason" placeholder="为什么关注？"></textarea></div>
+    <div class="form-group"><label>买入触发条件</label><input type="text" id="fwTrigger" placeholder="如 回调到20日线"></div>
+    <div class="form-group"><label>评级</label><select id="fwRating"><option value="⭐⭐⭐⭐⭐">⭐⭐⭐⭐⭐ 强烈关注</option><option value="⭐⭐⭐⭐">⭐⭐⭐⭐ 重点跟踪</option><option value="⭐⭐⭐" selected>⭐⭐⭐ 值得观察</option><option value="⭐⭐">⭐⭐ 参考</option><option value="⭐">⭐ 了解</option></select></div>
+    <button class="btn btn-primary" onclick="saveFundWatch()">保存</button>
+  </div>
+</div>
+
+<div class="nav-bar">
+  <button class="nav-btn active" onclick="switchTab('dashboard')">总览</button>
+  <button class="nav-btn" onclick="switchTab('holdings')">持仓</button>
+  <button class="nav-btn" onclick="switchTab('watchlist')">观察池</button>
+  <button class="nav-btn" onclick="switchTab('checklist')">交易检查</button>
+  <button class="nav-btn" onclick="switchTab('logs')">日志</button>
+  <button class="nav-btn" onclick="switchTab('brief')">简报</button>
+  <button class="nav-btn" onclick="switchTab('diary')">日记</button>
+  <button class="nav-btn" onclick="switchTab('data')">数据</button>
+</div>
+
+<script>
+  // ====== Data helpers ======
+  const DATA_VERSION = '20260604-v1';
+  function checkVersion() {
+    const saved = localStorage.getItem('inv_version');
+    if (saved !== DATA_VERSION) {
+      // 版本不匹配，清除旧缓存，下次加载将使用新的默认数据
+      ['stockHoldings','fundHoldings','stockWatchlist','fundWatchlist','briefs','events','logs','diaries','todayPush'].forEach(k => localStorage.removeItem('inv_' + k));
+      localStorage.setItem('inv_version', DATA_VERSION);
+    }
+  }
+  checkVersion();
+
+  function loadData(key, def) {
+    try { const d = localStorage.getItem('inv_' + key); return d ? JSON.parse(d) : def; }
+    catch (e) { console.warn('loadData error', key, e); return def; }
+  }
+  function saveData(key, val) {
+    try { localStorage.setItem('inv_' + key, JSON.stringify(val)); }
+    catch (e) { console.warn('saveData error', key, e); }
+  }
+
+  // ====== Default data from 2026-05-25 screenshots ======
+  // 中信证券持仓（8只：7只截图可见 + 科创芯片含今日买入）
+  let stockHoldings = loadData('stockHoldings', [
+    { code: '510300', name: '300ETF', type: 'ETF', amount: 1477.80, profit: 51.20, shares: 300, cost: 4.739, price: 4.926, reason: '沪深300指数，大盘基准。今日-0.79%，盈亏回落至+51.20', target: '持有观察' },
+    { code: '513100', name: '纳指ETF', type: 'ETF', amount: 2240.00, profit: 402.60, shares: 1000, cost: 1.832, price: 2.240, reason: '纳斯达克100指数，分散美股。隔夜美股调整，今日回调-2.57%', target: '持有观察' },
+    { code: '515880', name: '通信ETF', type: 'ETF', amount: 3074.40, profit: 396.80, shares: 1800, cost: 1.485, price: 1.708, reason: '通信设备行业ETF，5G/6G+光模块。昨日大涨后今日小幅回调-0.47%，浮盈+15.03%', target: '持有观察' },
+    { code: '516510', name: '云计算50', type: 'ETF', amount: 1733.00, profit: -55.00, shares: 1000, cost: 1.783, price: 1.733, reason: '云计算行业指数。今日继续回调-1.81%，亏损扩大至-2.80%', target: '持有观察' },
+    { code: '588000', name: '科创50', type: 'ETF', amount: 2015.20, profit: 368.90, shares: 1100, cost: 1.492, price: 1.832, reason: '科创板50指数，科技核心。今日微涨+0.49%，浮盈维持+22.78%', target: '持有观察' },
+    { code: '588200', name: '科创芯片', type: 'ETF', amount: 11228.20, profit: 987.70, shares: 3100, cost: 3.302, price: 3.622, reason: '科创芯片指数，半导体设备龙头。今日延续强势+1.43%，浮盈扩大至+9.70%', target: '核心仓位，条件单监控中' },
+    { code: '-', name: '纳指基金（联接）', type: '基金', amount: 218.70, profit: 31.20, shares: 100, cost: 1.745, price: 2.107, reason: '纳斯达克指数联接基金，小仓位分散配置。今日-2.14%', target: '持有观察' },
+    { code: '159530', name: '机器人E', type: 'ETF', amount: 4162.30, profit: -132.50, shares: 2700, cost: 1.596, price: 1.549, reason: '机器人产业ETF，具身智能。今日微涨+0.65%，亏损收窄至-2.96%', target: '持有观察' }
+  ]);
+
+  // 同花顺基金持仓（4只）
+  let fundHoldings = loadData('fundHoldings', [
+    { code: '022364', name: '永赢科技智选混合发起A', type: '基金', amount: 1534.91, profit: 869.43, today: 13.61, reason: 'AI算力光模块方向，基金经理任桀。T+1确认6/3收益+13.61，核心利润来源+869.43', target: '核心利润来源，继续持有' },
+    { code: '027051', name: '诺安科技智选混合A', type: '基金', amount: 1969.80, profit: -35.62, today: 0.00, reason: '2026-05-15新基金，封闭期。今日无变动', target: '封闭期内无法操作' },
+    { code: '018123', name: '永赢数字经济智选混合C', type: '基金', amount: 6598.06, profit: -56.45, today: 247.55, reason: '半导体芯片设计，5月加仓已确认。T+1确认6/3大涨+247.55，持有收益回升至-56.45', target: '占比约53%，警惕单一方向过重' }
+  ]);
+
+  // 股票/ETF观察池（同花顺股票自选）
+  let stockWatchlist = loadData('stockWatchlist', [
+    { code: '-', name: '智谱AI', type: '股票', sector: 'AI算力', reason: 'AI大模型应用，高弹性标的', trigger: 'AI应用商业化落地', rating: '⭐⭐⭐⭐' },
+    { code: '-', name: 'MINIMAX-W', type: '股票', sector: 'AI算力', reason: 'AI大模型，海外业务拓展', trigger: '海外AI市场突破', rating: '⭐⭐⭐⭐' },
+    { code: '300757', name: '罗博特科', type: '股票', sector: '光模块', reason: '光模块设备，AI算力受益', trigger: '光模块订单增长', rating: '⭐⭐⭐⭐' },
+    { code: '601138', name: '工业富联', type: '股票', sector: 'AI算力', reason: '电子制造龙头，AI服务器代工核心，苹果+英伟达双供应链', trigger: 'AI服务器订单放量或业绩超预期', rating: '⭐⭐⭐⭐' },
+    { code: '300502', name: '新易盛', type: '股票', sector: '光模块', reason: '光模块龙头，800G产品放量，AI算力核心受益', trigger: '光模块行业景气度延续或业绩超预期', rating: '⭐⭐⭐⭐' },
+    { code: '839725', name: '惠丰钻石', type: '股票', sector: '芯片/半导体', reason: '培育钻石/超硬材料，半导体切割应用', trigger: '消费回暖或半导体材料需求增长', rating: '⭐⭐' },
+    { code: '300179', name: '四方达', type: '股票', sector: '芯片/半导体', reason: '超硬材料，工业及半导体应用', trigger: '制造业复苏', rating: '⭐⭐' },
+    { code: '-', name: '天智航', type: '股票', sector: '机器人', reason: '医疗机器人，创新器械', trigger: '医疗器械政策催化', rating: '⭐⭐⭐' },
+    { code: '688256', name: '寒武纪', type: '股票', sector: 'AI算力', reason: 'AI芯片设计，国产替代', trigger: 'AI算力需求爆发', rating: '⭐⭐⭐⭐' },
+    { code: '688041', name: '海光信息', type: '股票', sector: 'AI算力', reason: 'CPU/DCU芯片，国产算力核心', trigger: '信创订单落地', rating: '⭐⭐⭐⭐' },
+    { code: '688361', name: '中科飞测', type: '股票', sector: '芯片/半导体', reason: '半导体检测设备，国产替代核心', trigger: '半导体设备板块回调', rating: '⭐⭐⭐⭐' },
+    { code: '000938', name: '烽火通信', type: '股票', sector: '通信', reason: '通信设备龙头，5G/6G建设受益', trigger: '回调到年线或5G政策催化', rating: '⭐⭐⭐' },
+    { code: '-', name: '中兴通讯', type: '股票', sector: '通信', reason: '通信设备，全球5G部署', trigger: '海外5G订单落地', rating: '⭐⭐⭐' },
+    { code: '688408', name: '中信博', type: '股票', sector: '其他', reason: '光伏跟踪支架，新能源出海', trigger: '光伏板块回暖或海外订单落地', rating: '⭐⭐' },
+    { code: '688027', name: '国盾量子', type: '股票', sector: '其他', reason: '量子通信，科技前沿', trigger: '量子产业政策催化', rating: '⭐⭐' },
+    { code: '688488', name: '艾迪药业', type: '股票', sector: '其他', reason: '创新药研发，HIV治疗', trigger: '临床进展或获批', rating: '⭐⭐' },
+    { code: '688798', name: '艾为电子', type: '股票', sector: '芯片/半导体', reason: '模拟芯片设计，消费电子', trigger: '消费电子复苏', rating: '⭐⭐⭐' },
+    { code: '688261', name: '东微半导', type: '股票', sector: '芯片/半导体', reason: '功率半导体，新能源应用', trigger: '新能源车销量增长', rating: '⭐⭐⭐' },
+    { code: '300604', name: '长川科技', type: '股票', sector: '芯片/半导体', reason: '半导体测试设备', trigger: '半导体设备板块同步', rating: '⭐⭐⭐' },
+    { code: '300456', name: '赛微电子', type: '股票', sector: '芯片/半导体', reason: 'MEMS传感器，物联网', trigger: '物联网设备放量', rating: '⭐⭐' },
+    { code: '300482', name: '万孚生物', type: '股票', sector: '其他', reason: '体外诊断，医疗器械', trigger: '医疗需求稳定增长', rating: '⭐⭐' },
+    { code: '301091', name: '深城交', type: '股票', sector: '其他', reason: '智慧城市交通，数字化', trigger: '智慧城市政策催化', rating: '⭐⭐' },
+    { code: '300638', name: '广和通', type: '股票', sector: '其他', reason: '物联网模组，AIoT受益', trigger: '物联网政策或业绩超预期', rating: '⭐⭐' },
+    { code: '000066', name: '中国长城', type: '股票', sector: '其他', reason: '国产计算机，信创概念', trigger: '信创政策催化', rating: '⭐⭐⭐' },
+    { code: '688390', name: '固德威', type: '股票', sector: '其他', reason: '光伏逆变器，新能源出海', trigger: '光伏板块回暖', rating: '⭐⭐' },
+    { code: '688158', name: '优刻得-W', type: '股票', sector: 'AI算力', reason: '云计算服务，AI算力', trigger: '云计算需求增长', rating: '⭐⭐⭐' },
+    { code: '515050', name: '5GETF', type: 'ETF', sector: '通信', reason: '5G通信产业指数', trigger: '5G建设加速', rating: '⭐⭐⭐' },
+    { code: '-', name: '纳指科技', type: 'ETF', sector: '其他', reason: '纳斯达克科技指数', trigger: '美股科技板块回调', rating: '⭐⭐⭐' },
+    { code: '513310', name: '中韩半导体', type: 'ETF', sector: '芯片/半导体', reason: '中韩半导体产业链', trigger: '半导体板块整体回调', rating: '⭐⭐⭐' },
+    { code: '300033', name: '同花顺', type: '股票', sector: '金融科技', reason: '证券软件龙头，AI+金融应用', trigger: '券商板块回暖或AI金融应用落地', rating: '⭐⭐⭐' },
+    { code: '00700', name: '腾讯控股', type: '股票', sector: '互联网', reason: '互联网巨头，微信+游戏+云计算', trigger: '港股科技板块回暖或游戏版号常态化', rating: '⭐⭐⭐⭐' },
+    { code: '688981', name: '中芯国际', type: '股票', sector: '芯片/半导体', reason: '国产晶圆代工龙头，半导体制造核心', trigger: '半导体设备板块同步或先进制程突破', rating: '⭐⭐⭐⭐' },
+    { code: '09988', name: '阿里巴巴', type: '股票', sector: '互联网', reason: '电商+云计算龙头，通义千问AI大模型', trigger: '阿里云增长恢复或AI应用落地', rating: '⭐⭐⭐⭐' },
+    { code: '01810', name: '小米集团', type: '股票', sector: '消费电子', reason: '手机+IoT+汽车，SU7放量', trigger: '汽车销量超预期或手机高端化突破', rating: '⭐⭐⭐⭐' },
+    { code: '02015', name: '理想汽车', type: '股票', sector: '新能源车', reason: '增程式SUV龙头，L系列持续热销', trigger: '新能源车政策催化或新品发布', rating: '⭐⭐⭐' },
+    { code: 'PDD', name: '拼多多', type: '股票', sector: '互联网', reason: '电商巨头，Temu海外扩张', trigger: '海外业务增长或业绩超预期', rating: '⭐⭐⭐' },
+    { code: '03690', name: '美团', type: '股票', sector: '互联网', reason: '本地生活龙头，闪购+到店业务', trigger: '消费复苏或新业务盈利改善', rating: '⭐⭐⭐' },
+    { code: '09888', name: '百度', type: '股票', sector: 'AI算力', reason: '文心一言AI大模型，自动驾驶Apollo', trigger: 'AI应用商业化或自动驾驶落地', rating: '⭐⭐⭐⭐' },
+    { code: '01024', name: '快手', type: '股票', sector: '互联网', reason: '短视频平台，直播电商增长', trigger: '广告业务恢复或电商GMV增长', rating: '⭐⭐⭐' },
+    { code: '09626', name: '哔哩哔哩', type: '股票', sector: '互联网', reason: 'Z世代视频平台，游戏+直播', trigger: '游戏业务回暖或盈利拐点', rating: '⭐⭐' },
+    { code: '09618', name: '京东', type: '股票', sector: '互联网', reason: '自营电商+物流，供应链优势', trigger: '消费复苏或物流业务独立上市', rating: '⭐⭐⭐' },
+    { code: '09999', name: '网易', type: '股票', sector: '互联网', reason: '游戏龙头，爆款游戏持续', trigger: '新游戏上线或版号常态化', rating: '⭐⭐⭐' },
+    { code: 'NIO', name: '蔚来', type: '股票', sector: '新能源车', reason: '高端纯电品牌，换电模式', trigger: '销量回暖或换电网络扩张', rating: '⭐⭐' },
+    { code: 'XPEV', name: '小鹏汽车', type: '股票', sector: '新能源车', reason: '智能驾驶领先，MONA系列放量', trigger: '智驾技术突破或销量回升', rating: '⭐⭐' },
+    { code: 'FUTU', name: '富途控股', type: '股票', sector: '金融科技', reason: '互联网券商，跨境投资平台', trigger: '港股美股交易量回升', rating: '⭐⭐' },
+    { code: '159381', name: '华夏创业板人工智能ETF', type: 'ETF', sector: 'AI算力', reason: '创业板AI主题，覆盖AI应用端，场内ETF', trigger: '创业板回调或AI应用端业绩兑现', rating: '⭐⭐⭐' },
+    { code: '561560', name: '电力ETF华泰柏瑞', type: 'ETF', sector: '电力/公用事业', reason: '中证全指电力公用事业ETF，高股息防御属性，科技回调时资金避风港', trigger: '科技板块过热回调或高股息轮动窗口', rating: '⭐⭐⭐⭐' },
+    { code: '588760', name: '科创人工智能ETF', type: 'ETF', sector: 'AI算力', reason: '科创板人工智能主题ETF，覆盖AI芯片+算法+应用，国产算力链', trigger: 'AI板块回调15%或国产大模型催化', rating: '⭐⭐⭐⭐' },
+    { code: '002180', name: '奔图科技', type: '股票', sector: '其他', reason: '国产打印机龙头，信创核心标的，政府采购替代海外品牌', trigger: '信创政策催化或打印机集采放量', rating: '⭐⭐⭐' },
+    { code: '000062', name: '深圳华强', type: '股票', sector: '消费电子', reason: '电子元器件分销龙头，华为产业链核心渠道，深圳本地股', trigger: '华为新品发布或消费电子复苏', rating: '⭐⭐⭐' },
+    { code: '301182', name: '凯旺科技', type: '股票', sector: '消费电子', reason: '精密连接器及组件，消费电子+汽车电子双驱动', trigger: '消费电子复苏或新能源车连接器需求增长', rating: '⭐⭐' },
+    { code: '159611', name: '电力ETF广发', type: 'ETF', sector: '电力/公用事业', reason: '中证全指电力ETF，高股息防御属性，分散科技集中度风险', trigger: '科技板块回调或高股息轮动', rating: '⭐⭐⭐⭐' },
+    { code: '159625', name: '绿色电力ETF', type: 'ETF', sector: '电力/公用事业', reason: '绿色电力主题ETF，新能源发电（风电/光伏/水电），碳中和受益', trigger: '新能源发电政策催化或电价改革', rating: '⭐⭐⭐' },
+    { code: '688322', name: '奥比中光-W', type: '股票', sector: '机器人', reason: '3D视觉传感器龙头，机器人/自动驾驶/AI视觉核心传感器', trigger: '机器人视觉需求放量或自动驾驶落地', rating: '⭐⭐⭐⭐' },
+    { code: '002050', name: '三花智控', type: '股票', sector: '机器人', reason: '制冷控制元器件龙头，新能源车热管理核心，机器人关节执行器供应商', trigger: '新能源车销量增长或机器人量产放量', rating: '⭐⭐⭐⭐' },
+    { code: '688017', name: '绿的谐波', type: '股票', sector: '机器人', reason: '谐波减速器国产龙头，机器人核心零部件，国产替代核心', trigger: '机器人量产放量或减速器进口替代加速', rating: '⭐⭐⭐⭐' },
+    { code: '159365', name: '恒指港股通ETF', type: 'ETF', sector: '互联网', reason: '跟踪恒生指数，港股通标的，T+0交易，分散A股单一市场风险', trigger: '港股科技板块回暖或南向资金持续流入', rating: '⭐⭐⭐' },
+    { code: '513170', name: '电建ETF汇添富', type: 'ETF', sector: '其他', reason: '中证基建工程指数，基建/建筑/工程机械，逆周期调节受益', trigger: '基建投资加速或工程机械周期复苏', rating: '⭐⭐' }
+  ]);
+
+  // 基金观察池（同花顺基金自选，去除已在持仓的4只）
+  let fundWatchlist = loadData('fundWatchlist', [
+    { code: '160644', name: '鹏华港美互联股票(LOF)', reason: '港股+美股互联主题，分散A股单一市场风险', trigger: '港股回调10%或净值跌破2.0', rating: '⭐⭐⭐' },
+    { code: '008888', name: '华夏国证半导体芯片ETF联接C', reason: '半导体芯片宽基，覆盖设计+制造+封测全链条', trigger: '回调8%或行业估值回到合理区间', rating: '⭐⭐⭐⭐' },
+    { code: '020256', name: '中欧中证机器人指数发起C', reason: '机器人产业指数C类，与持仓机器人E互补', trigger: '机器人板块回调15%或政策催化', rating: '⭐⭐⭐' },
+    { code: '014881', name: '天弘中证机器人ETF发起联接C', reason: '机器人ETF联接C，低成本跟踪', trigger: '机器人板块整体回调', rating: '⭐⭐⭐' },
+    { code: '025553', name: '中银中证机器人指数A', reason: '机器人产业指数A类', trigger: '机器人板块回调15%', rating: '⭐⭐⭐' },
+    { code: '018345', name: '华夏中证机器人ETF发起式联接C', reason: '机器人ETF联接C，华夏品牌', trigger: '机器人板块整体回调', rating: '⭐⭐⭐' },
+    { code: '020973', name: '易方达国证机器人产业ETF联接发起式C', reason: '机器人产业ETF联接C，易方达', trigger: '机器人板块整体回调', rating: '⭐⭐⭐' },
+    { code: '007475', name: '华夏创业板成长ETF联接C', reason: '创业板成长风格，高弹性', trigger: '创业板整体回调', rating: '⭐⭐⭐' },
+    { code: '023081', name: '华夏创业板人工智能ETF联接C', reason: '创业板AI联接C，场外配置', trigger: '创业板回调或AI业绩兑现', rating: '⭐⭐⭐' },
+    { code: '015836', name: '华夏创业板新能源ETF发起式联接C', reason: '创业板新能源，分散科技单一方向', trigger: '新能源板块回暖', rating: '⭐⭐' },
+    { code: '025503', name: '华夏创业板人工智能ETF发起式联接C', reason: '创业板AI联接C，新基金', trigger: '创业板回调', rating: '⭐⭐⭐' },
+    { code: '007282', name: '华夏有色金属ETF联接C', reason: '有色金属，周期板块分散', trigger: '金属价格上涨周期', rating: '⭐⭐' },
+    { code: '016723', name: '鹏华国证石油天然气ETF联接C', reason: '石油天然气，能源板块分散', trigger: '油价上涨周期', rating: '⭐⭐' },
+    { code: '015757', name: '泰信行业精选混合C', reason: '行业精选混合，灵活配置', trigger: '基金经理调仓方向明确', rating: '⭐⭐⭐' },
+    { code: '017525', name: '华夏北证50成份指数A', reason: '北证50指数，小盘成长', trigger: '北交所政策催化', rating: '⭐⭐' }
+  ]);
+
+  let briefs = loadData('briefs', [
+    {
+      date: '2026-05-20',
+      title: '05-20 AI新闻与板块分析',
+      overseas: '① 谷歌I/O密集发布AI产品但股价反跌 → AI应用/算力 中性\n② 英伟达财报预期升温 → 芯片/算力 利好 高\n③ OpenAI模型迭代商业化加速 → AI大模型 利好 中',
+      domestic: '① 小米玄戒O1芯片3nm量产 → 半导体 利好 高\n② DeepSeek/Kimi大额融资 → AI/算力 利好 高\n③ 宇树机器人语音驱动技术 → 机器人 利好 中',
+      market: '科创50涨超2%创历史新高，芯片产业链爆发。持仓科创50、通信ETF、纳指ETF全线上涨。',
+      summary: '芯片产业链全面爆发，科创50创历史新高。持仓科技方向全红，但短线注意过热风险。',
+      holdings: [
+        { name: '科创50', change: '+2.0%', profitToday: '+43.20' },
+        { name: '通信ETF', change: '+1.8%', profitToday: '+50.00' },
+        { name: '纳指ETF', change: '+1.2%', profitToday: '+26.00' },
+        { name: '科创芯片', change: '+3.5%', profitToday: '+147.56' },
+        { name: '机器人E', change: '+0.5%', profitToday: '+5.19' }
+      ]
+    },
+    {
+      date: '2026-05-25',
+      title: '05-25 华为发布韬（τ）定律',
+      overseas: '① 华为在ISCAS 2026发布韬定律 → 半导体/国产芯片 利好 高\n② 英伟达财报后波动收敛 → 芯片/算力 中性\n③ 美联储会议纪要待发布 → 流动性 观望 中',
+      domestic: '① 华为韬定律：以"时间缩微"替代"几何缩微"，逻辑折叠技术破局 → 半导体/国产算力 利好 高\n② 永赢数字经济C加仓份额确认，收益+320.46到账 → 持仓 利好\n③ 方正富邦致盛A清盘风险确认，规模仅800万 → 持仓 风险',
+      market: '【事件】5月25日，华为董事何庭波在上海ISCAS 2026正式发布韬（τ）定律，提出以"时间缩微"替代"几何缩微"，通过逻辑折叠技术持续压缩信号传播时延。华为过去6年已量产381款芯片，2026秋季将推出麒麟2026芯片（首次采用逻辑折叠），预计2031年达等效1.4nm制程。这是中国首次在全球半导体领域提出产业指导新原则，直接利好国产芯片设计/设备/材料全链条。当日半导体板块大涨，中芯国际、寒武纪等热门个股纷纷上扬。',
+      summary: '华为韬定律发布是中国半导体从"跟随"转向"定义规则"的标志性事件。对持仓而言，科创芯片ETF、半导体ETF、永赢数字经济C均直接受益。但需注意：韬定律是长期技术路线，短期股价已部分透支预期，不宜追高。',
+      holdings: [
+        { name: '科创芯片', change: '+3.5%', profitToday: '+147.56' },
+        { name: '科创50', change: '+2.0%', profitToday: '+43.20' },
+        { name: '通信ETF', change: '+1.8%', profitToday: '+50.00' }
+      ]
+    },
+    {
+      date: '2026-05-25',
+      title: '05-25 开盘提醒 + 收盘总结',
+      overseas: '① 美股休市（阵亡将士纪念日）→ 全球权益 中性\n② 英伟达财报后波动收敛 → 芯片/算力 中性\n③ 美联储会议纪要待发布 → 流动性 观望 中',
+      domestic: '① 永赢数字经济C加仓份额确认，收益+320.46到账 → 持仓 利好\n② 方正富邦致盛A清盘风险确认，规模仅800万 → 持仓 风险\n③ 长鑫科技IPO上会（5/27）临近 → 半导体设备 利好 高',
+      market: '【09:29 开盘】科创50高开+0.8%，芯片板块延续强势。持仓通信ETF/科创50/纳指ETF全线飘红，机器人E平开。\n\n【15:04 收盘】科创50涨2.65%，芯片产业链继续爆发。通信ETF/科创50/纳指ETF全线上涨，机器人E微跌-0.99%。当日总盈亏+996.58（中信+613.60 + 基金+382.98）。科创芯片条件单止损已设置（-4%触发）。',
+      summary: '加仓确认收益到账，方正富邦待清出。长鑫IPO临近催化半导体设备，但该板块月涨37%已过热，不宜追高。单一方向仓位达54%，需警惕集中度。',
+      holdings: [
+        { name: '科创50', change: '+2.65%', profitToday: '+55.80' },
+        { name: '通信ETF', change: '+2.10%', profitToday: '+57.30' },
+        { name: '纳指ETF', change: '+1.50%', profitToday: '+32.50' },
+        { name: '科创芯片', change: '+3.20%', profitToday: '+130.00' },
+        { name: '机器人E', change: '-0.99%', profitToday: '-10.40' },
+        { name: '300ETF', change: '+0.30%', profitToday: '+4.40' },
+        { name: '云计算50', change: '+0.80%', profitToday: '+14.30' }
+      ]
+    },
+    {
+      date: '2026-05-26',
+      title: '0526 定时任务简报',
+      overseas: '① 英伟达Q1营收816亿美元创历史新高，发布Vera Rubin芯片 → 算力芯片/纳指科技 利好 高\n② 谷歌I/O 2026全面转向AI Agent，Gemini 3.5+Spark发布 → AI应用/互联网科技 利好 高\n③ Meta裁员10%转岗7000人至AI，SpaceXAI转型算力出租 → AI算力基建 利好 中',
+      domestic: '① 阿里发布平头哥真武M890芯片+Qwen3.7-Max → 半导体/国产算力 利好 高\n② 国产大模型完成与国产算力Day 0适配，推理需求爆发 → 半导体设备/国产算力 利好 高\n③ 国务院推进AI综合性立法+AI伦理安全指引 → AI ETF 中性偏利好 中',
+      market: '科创50平开，芯片板块延续昨日强势。持仓纳指ETF低开-1.5%（受美股休市后补跌影响），通信ETF/云计算50平开。\n科创50涨1.20%，芯片板块延续强势。今日买入科创芯片2200股，加仓后持仓占比显著提升。方正富邦致盛A发起第一批赎回。当日中信账户微跌-58.40。',
+      summary: '当日中信账户微跌-58.40。'
+    },
+    {
+      date: '2026-05-26',
+      title: '05-26 收盘总结',
+      overseas: '① 英伟达Q1营收816亿美元创历史新高，发布Vera Rubin芯片 → 算力芯片/纳指科技 利好 高\n② 谷歌I/O 2026全面转向AI Agent，Gemini 3.5+Spark发布 → AI应用/互联网科技 利好 高\n③ 美联储会议纪要暗示年内可能降息一次 → 流动性 中性偏利好 中',
+      domestic: '① 阿里发布平头哥真武M890芯片+Qwen3.7-Max → 半导体/国产算力 利好 高\n② 国产大模型完成与国产算力Day 0适配，推理需求爆发 → 半导体设备/国产算力 利好 高\n③ 方正富邦致盛A第一批赎回发起 → 持仓 风险释放',
+      market: '【09:29 开盘】科创50平开，芯片板块延续昨日强势。纳指ETF低开-1.5%（美股休市后补跌），通信ETF/云计算50平开。\n\n【15:04 收盘】科创50涨1.20%，芯片板块延续强势。今日买入科创芯片2200股，成交价3.748，加仓后持仓占比显著提升。方正富邦致盛A发起第一批赎回1170.32份。中信账户当日微跌-58.40，基金账户当日-38.53。',
+      summary: '英伟达财报+国产算力Day 0适配双重催化，芯片主线确认。加仓科创芯片，方正富邦启动赎回。整体微亏，但主线逻辑 intact。',
+      holdings: [
+        { name: '科创50', change: '+1.20%', profitToday: '+25.10' },
+        { name: '通信ETF', change: '+0.80%', profitToday: '+22.00' },
+        { name: '纳指ETF', change: '-1.50%', profitToday: '-32.50' },
+        { name: '科创芯片', change: '+3.20%', profitToday: '+130.00' },
+        { name: '机器人E', change: '-0.50%', profitToday: '-5.20' },
+        { name: '300ETF', change: '+0.30%', profitToday: '+4.40' },
+        { name: '云计算50', change: '+0.80%', profitToday: '+14.30' }
+      ]
+    },
+    {
+      date: '2026-05-27',
+      title: '05-27 收盘总结',
+      overseas: '① Anthropic Claude Mythos漏洞检测震动金融圈 → AI安全/网络安全 利好 中\n② GPT-5.6定档6月发布，大模型"六月混战"开启 → 算力基建 利好 高\n③ 黄仁勋承认英伟达基本放弃中国AI芯片市场 → 国产芯片 利好 高，纳指短期承压',
+      domestic: '① 阿里发布自研AI芯片真武M890 + Qwen3.7-Max → 国产算力 利好 高\n② 发改委推动人形机器人进工厂，上海目标10万台 → 机器人 利好 高\n③ 全球AI大模型调用量连续五周上涨，DeepSeek登顶 → AI应用 利好 中',
+      market: '【09:29 开盘】港股科技强势反弹，A股科技方向承压。芯片/机器人全线低开，白酒/影视/电力防御板块领涨。\n\n【15:04 收盘】科创50跌2.89%，科创芯片跌2.88%，机器人E跌4.30%，云计算50由盈转亏跌2.56%，仅纳指ETF逆势反弹+1.74%。中信当日-480.60（-2.03%），总市值23,009.60。方正富邦致盛A赎回确认已清仓，集中度风险部分释放。',
+      summary: '科技成长全线回调，资金切向防御板块。持仓日内回撤近500元，但国产算力长期逻辑未变。方正富邦赎回完成，新增纳指基金小仓位。',
+      holdings: [
+        { name: '300ETF', change: '-0.80%', profitToday: '-12.00' },
+        { name: '纳指ETF', change: '+1.74%', profitToday: '+38.00' },
+        { name: '通信ETF', change: '-0.58%', profitToday: '-16.20' },
+        { name: '云计算50', change: '-2.56%', profitToday: '-46.00' },
+        { name: '科创50', change: '-2.89%', profitToday: '-62.70' },
+        { name: '科创芯片', change: '-2.88%', profitToday: '-341.00' },
+        { name: '机器人E', change: '-4.30%', profitToday: '-44.40' }
+      ]
+    },
+    {
+      date: '2026-05-28',
+      title: '05-28 收盘总结',
+      overseas: '① 英伟达Polar框架发布，Codex跑分暴涨近6倍 → AI算力/芯片 利好 高\n② OpenAI基金会砸2.5亿美元研究AI就业冲击 → AI应用 中性偏利空 中\n③ Meta或引入谷歌/OpenAI第三方模型 → 英伟达供应商地位短期稳固 中',
+      domestic: '① DeepSeek-V4首次使用国产算力训练，"模型-芯片-云"闭环跑通 → 国产算力 利好 高\n② 国产算力进入"全链通胀"周期，2026年算力基建投资4500亿 → 算力基建 利好 高\n③ 阿里发布真武M890+Qwen3.7-Max，腾讯字节密集推AI应用 → AI应用 利好 中',
+      market: '【09:29 开盘】科创50微红+0.05%，芯片板块反弹。通信ETF大幅高开，机器人E继续承压。\n\n【15:04 收盘】科创50涨+0.05%，科创芯片反弹+0.54%，通信ETF大涨+5.2%（现价1.619），云计算50反弹-0.34%（亏损收窄至-11.00），纳指ETF微跌-0.18%。中信当日+465.30（+2.00%），总市值23,682.05。同花顺基金昨日（05-27）净值下跌-214.96，永赢数字经济C利润大幅回吐至+48.22。',
+      summary: '科技分化加剧，通信ETF独领风骚+5.2%，科创芯片反弹但机器人E持续失血。永赢数字经济C利润回吐严重，科技主线内部也开始分化。中信账户回血465元，整体浮亏收窄。',
+      holdings: [
+        { name: '300ETF', change: '-1.20%', profitToday: '-18.00' },
+        { name: '纳指ETF', change: '-0.18%', profitToday: '-4.00' },
+        { name: '通信ETF', change: '+5.20%', profitToday: '+144.00' },
+        { name: '云计算50', change: '-0.34%', profitToday: '-6.00' },
+        { name: '科创50', change: '+0.05%', profitToday: '+1.10' },
+        { name: '科创芯片', change: '+0.54%', profitToday: '+63.10' },
+        { name: '机器人E', change: '-1.46%', profitToday: '-14.40' }
+      ]
+    },
+    {
+      date: '2026-05-29',
+      title: '05-29 收盘总结',
+      overseas: '① Meta正式推出付费AI订阅，测试$7.99/$19.99两档月费 → AI应用商业化 利好 中\n② Anthropic年化收入突破470亿美元，SpaceX超算仅租六个月 → 全球算力需求 利好 高\n③ IBM与Red Hat承诺50亿美元启动Project Lightwell → 企业AI安全 利好 中',
+      domestic: '① DeepSeek-V4发布，完成从英伟达CUDA到国产算力全栈迁移 → 国产算力 利好 高\n② 华为在IEEE正式提出"韬(τ)定律" → 半导体/国产芯片 利好 高\n③ A股算力硬件股集体走强，"易中天"齐创历史新高 → 光模块/算力 利好 高\n④ 大基金减持沪硅产业3305万股 → 半导体情绪 利空 中',
+      market: '【09:29 开盘】科创50低开，芯片板块承压。通信ETF平开，纳指ETF高开。\n\n【盘中】午后芯片半导体全线跳水，科创芯片ETF跌幅扩大至-5.58%，半导体ETF跌-5.84%。光模块"易中天"逆势创新高。银行板块逆势拉升。\n\n【15:00 收盘】科创50跌-5.05%，科创芯片跌-5.58%，半导体ETF跌-5.84%，机器人E跌-4.94%。通信ETF相对抗跌-1.79%，纳指ETF逆势涨+2.66%。中信当日-875.40（-2.60%），总市值23,546.30。同花顺基金当日-364.27，永赢数字经济C持有收益转负。',
+      summary: '芯片半导体全线暴跌，大基金减持+获利盘兑现双重冲击。光模块龙头逆势创新高，资金在科技内部做细分高低切换。机器人E逢低加仓600股，科创芯片设置条件单（3.2买入/3.9止盈3.3止损）。',
+      holdings: [
+        { name: '300ETF', change: '-0.18%', profitToday: '-2.70' },
+        { name: '纳指ETF', change: '+2.66%', profitToday: '+59.00' },
+        { name: '通信ETF', change: '-1.79%', profitToday: '-52.20' },
+        { name: '云计算50', change: '-2.77%', profitToday: '-49.00' },
+        { name: '科创50', change: '-5.05%', profitToday: '-107.80' },
+        { name: '科创芯片', change: '-5.58%', profitToday: '-657.20' },
+        { name: '机器人E', change: '-4.94%', profitToday: '-96.00' },
+        { name: '纳指基金', change: '+2.27%', profitToday: '+4.70' }
+      ]
+    },
+    {
+      date: '2026-06-01',
+      title: '06-01 收盘总结',
+      overseas: '① 英伟达GTC Taipei 2026开幕，黄仁勋揭幕"PC新时代" → AI PC/消费电子/算力 利好 高\n② Anthropic完成650亿美元H轮融资，估值9650亿美元登顶全球AI榜首 → 美股科技/AI风险偏好 利好 高\n③ OpenAI冲刺万亿IPO，上市时间表提前至9月 → AI基础设施/云计算 利好 中',
+      domestic: '① 宇树科技科创板IPO今日上会，冲刺"A股人形机器人第一股" → 机器人/传感器/MCU/半导体 利好 高\n② 华为公布芯片路线图：2031年达1.4纳米等效水平 → 国产芯片/半导体国产替代 利好 高\n③ 阿里云发布真武M890芯片+Qwen3.7-Max，全栈Agent化升级 → 国产算力/云计算 利好 高',
+      market: '【09:29 开盘】A股三大指数低开，科技线承压。纳指ETF/恒生科技逆势高开。\n\n【盘中】芯片半导体全线跳水，科创芯片ETF跌幅扩大至-6.02%，半导体ETF跌-5.28%。光模块"易中天"分化。银行板块逆势拉升。\n\n【15:00 收盘】上证指数跌-0.27%，深证成指跌-1.51%，创业板指跌-2.15%。科创50跌-4.88%，科创芯片跌-6.02%，半导体ETF跌-5.28%，机器人E跌-1.75%。纳指ETF逆势涨+4.05%，恒生科技涨+1.29%。中信当日-833.10（-2.54%），总市值25,017.20。同花顺基金当日-365.12，永赢数字经济C持有收益转负至-493.34。',
+      summary: '6月1日形成"海内外双核驱动"：英伟达GTC台北大会与宇树科技IPO上会共同将AI芯片和具身智能推至焦点。但A股科技线集体回调，芯片半导体暴跌，获利盘兑现明显。机器人E逢低加仓1500股至2700股，成本降至1.596。国产算力长期逻辑 intact，但短期波动加剧。',
+      holdings: [
+        { name: '300ETF', change: '-1.12%', profitToday: '-16.50' },
+        { name: '纳指ETF', change: '+4.05%', profitToday: '+92.00' },
+        { name: '通信ETF', change: '-1.79%', profitToday: '-50.00' },
+        { name: '云计算50', change: '-2.77%', profitToday: '-49.80' },
+        { name: '科创50', change: '-4.88%', profitToday: '-99.00' },
+        { name: '科创芯片', change: '-6.02%', profitToday: '-669.60' },
+        { name: '机器人E', change: '-1.75%', profitToday: '-72.60' },
+        { name: '纳指基金', change: '+2.27%', profitToday: '+4.90' }
+      ]
+    },
+    {
+      date: '2026-06-04',
+      title: '06-04 收盘总结',
+      overseas: '① NVIDIA Computex 2026发布RTX Spark芯片，开启"AI Agent PC"时代 → 消费电子/AI PC/算力 利好 高\n② OpenAI GPT-5.5/Codex正式上线AWS Bedrock，多云战略落地 → 云计算/AI应用 利好 中\n③ xAI发布Grok Build Beta，终端AI编程Agent登场 → AI编程工具/Agent基础设施 利好 中',
+      domestic: '① 阿里Qwen3.7-Max登顶国产第一，真武M890芯片发布 → 国产AI/云计算/芯片 利好 高\n② DeepSeek V4完成国产芯片全栈原生适配，自主可控里程碑 → 国产芯片/半导体设备 利好 高\n③ 小米MiMo-V2.5开源登顶+首代机器人VLA模型+160亿AI投入 → 端侧AI/机器人/消费电子 利好 高',
+      market: '【09:29 开盘】科创芯片+3.66%领涨，纳指ETF-1.88%领跌。实时行情因刚开盘尚未同步，将在盘后更新完整数据。\n\n【盘中】A股震荡分化，芯片/AI方向延续强势，通信ETF高位回调，纳指ETF受隔夜美股调整持续承压。\n\n【15:00 收盘】A股三大指数涨跌互现，科技板块内部分化。中信当日+73.30（+0.19%），总市值26,161.60。科创芯片延续强势+1.43%（+158.10），科创50微涨+0.49%（+9.90），机器人E微涨+0.17%（+7.00）。纳指ETF回调-2.57%（-59.00），云计算50承压-1.81%（-32.00），通信ETF高位小幅回落-0.47%（-14.40）。同花顺基金T+1确认6/3收益+261.24，永赢数字经济C大涨+247.55，持有收益从-304.00大幅回升至-56.45。永赢科技+13.61，核心利润扩大至+869.43。',
+      summary: '6月4日A股震荡分化，科技板块内部分化加剧。国产芯片/AI方向延续强势（科创芯片+1.43%），但美股映射方向承压（纳指ETF-2.57%）。同花顺基金T+1确认6/3收益+261.24，永赢数字经济C大幅反弹。双账户总资产¥50,421，累计收益+¥2,839。通信ETF连续大涨后高位小幅回调，建议关注获利了结信号；纳指ETF受美联储政策预期和美股调整双重影响，短期承压。',
+      holdings: [
+        { name: '300ETF', change: '-0.79%', profitToday: '-11.70' },
+        { name: '纳指ETF', change: '-2.57%', profitToday: '-59.00' },
+        { name: '通信ETF', change: '-0.47%', profitToday: '-14.40' },
+        { name: '云计算50', change: '-1.81%', profitToday: '-32.00' },
+        { name: '科创50', change: '+0.49%', profitToday: '+9.90' },
+        { name: '科创芯片', change: '+1.43%', profitToday: '+158.10' },
+        { name: '机器人E', change: '+0.17%', profitToday: '+7.00' },
+        { name: '纳指基金', change: '+1.58%', profitToday: '+3.40' }
+      ]
+    },
+    {
+      date: '2026-06-03',
+      title: '06-03 收盘总结',
+      overseas: '① NVIDIA Computex 2026发布RTX Spark芯片，开启"AI Agent PC"时代 → 消费电子/AI PC/算力 利好 高\n② OpenAI GPT-5.5/Codex正式上线AWS Bedrock，多云战略落地 → 云计算/AI应用 利好 中\n③ xAI发布Grok Build Beta，终端AI编程Agent登场 → AI编程工具/Agent基础设施 利好 中',
+      domestic: '① 阿里Qwen3.7-Max登顶国产第一，真武M890芯片发布 → 国产AI/云计算/芯片 利好 高\n② DeepSeek V4完成国产芯片全栈原生适配，自主可控里程碑 → 国产芯片/半导体设备 利好 高\n③ 小米MiMo-V2.5开源登顶+首代机器人VLA模型+160亿AI投入 → 端侧AI/机器人/消费电子 利好 高',
+      market: '【09:29 开盘】A股三大指数低开，科技线承压。纳指ETF/恒生科技逆势高开。科创50低开，芯片板块承压。\n\n【盘中】三大指数全线翻红，创业板指涨超1.6%。AI、芯片、机器人等科技主题集体回暖，通信ETF大涨+5.69%领涨。港股科技板块小幅回调。\n\n【15:00 收盘】上证指数4083.97 +0.22%，深证成指15704.71 +0.73%，创业板指4122.99 +1.65%。两市成交额约3.13万亿。科创芯片ETF+3.57%最强，人工智能ETF+3.45%，半导体ETF+3.37%，通信ETF+5.69%。纳指ETF-1.88%，恒生科技-1.69%。中信当日+564.00（+1.51%），总市值26,088.30。同花顺基金当日无变动，总资产12,051.92。',
+      summary: '科技主线延续强势，芯片/AI方向领涨。通信ETF今日大涨+5.69%创阶段新高，科创芯片+3.57%收复失地。纳指ETF受隔夜美股调整影响-1.88%。两市成交额3.13万亿维持活跃。持仓双账户今日合计+564（中信+564 + 基金0），累计收益回升至约+2,494。国产算力"国模+国芯"闭环加速，机器人产业化推进，但跨境ETF短期承压。',
+      holdings: [
+        { name: '300ETF', change: '+0.59%', profitToday: '+8.70' },
+        { name: '纳指ETF', change: '-1.88%', profitToday: '-44.00' },
+        { name: '通信ETF', change: '+5.69%', profitToday: '+145.80' },
+        { name: '云计算50', change: '+0.06%', profitToday: '+1.00' },
+        { name: '科创50', change: '+2.36%', profitToday: '+46.20' },
+        { name: '科创芯片', change: '+3.57%', profitToday: '+390.60' },
+        { name: '机器人E', change: '+0.46%', profitToday: '+18.90' },
+        { name: '纳指基金', change: '-2.27%', profitToday: '-3.20' }
+      ]
+    },
+    {
+      date: '2026-06-02',
+      title: '06-02 收盘总结',
+      overseas: '① 英伟达Q1财报超预期：营收816亿美元同比+85%，但中国市场AI芯片份额归零 → 国产芯片 重大利好 高，纳指中性\n② OpenAI演示"Agentic操作系统"，手机界面由端侧模型实时生成，计划2027上半年量产 → 消费电子/AI应用 利好 高\n③ Alphabet拟筹800亿美元加码AI基础设施，伯克希尔100亿美元背书 → 全球算力/光模块/通信 利好 中',
+      domestic: '① 英伟达联合宇树科技发布人形机器人参考设计Isaac GR00T，宇树IPO在即 → 机器人/具身智能 重大利好 高\n② 美国《安全机器人法案》提案限制中国机器人出口 → 机器人短期利空扰动，国产自主可控长期受益 中\n③ 发改委要求国产大模型必须适配国产算力芯片，DeepSeek V4已完成华为昇腾/寒武纪全栈适配 → 科创芯片/半导体 重大利好 高',
+      market: '【09:29 开盘】A股三大指数低开，科技线承压。纳指ETF/恒生科技逆势高开。科创50低开，芯片板块承压。\n\n【盘中】三大指数全线翻红，创业板指涨超2%。AI、芯片、机器人等科技主题集体回暖，昨日大跌后今日修复。港股科技板块强势反弹，恒生科技大涨。\n\n【15:00 收盘】上证指数4075.10 +0.43%，深证成指15591.13 +1.63%，创业板指4055.87 +2.66%，科创50 1690.56 +1.61%。两市成交额约3.51万亿。沪深300ETF+1.40%，科创芯片ETF+2.23%，半导体ETF+1.66%，机器人ETF+1.81%，机器人E+1.19%，人工智能ETF+2.82%，恒生科技ETF+3.82%。纳指ETF微跌-0.93%（隔夜美股小幅调整）。中信当日+507.10（+1.37%），总市值25,524.30。同花顺基金当日+234.14，永赢数字经济C亏损收窄至-304.00，永赢科技重回+855.82。',
+      summary: '科技全线反弹修复，昨日暴跌后今日集体回暖。创业板指+2.66%领涨，AI、芯片、机器人主题全面修复。港股科技强势反弹带动恒生科技ETF+3.82%。两市成交额3.51万亿维持活跃。持仓双账户今日合计+741.24（中信+507.10 + 基金+234.14），累计收益回升至约+1,941。国产算力"国模+国芯"闭环加速成型，机器人产业从概念进入量产爆发期，宇树IPO在即催化情绪。',
+      holdings: [
+        { name: '300ETF', change: '+1.40%', profitToday: '+20.40' },
+        { name: '纳指ETF', change: '-0.93%', profitToday: '-22.00' },
+        { name: '通信ETF', change: '+1.29%', profitToday: '+37.40' },
+        { name: '云计算50', change: '+0.80%', profitToday: '+14.00' },
+        { name: '科创50', change: '+1.54%', profitToday: '+29.70' },
+        { name: '科创芯片', change: '+2.23%', profitToday: '+232.50' },
+        { name: '机器人E', change: '+1.19%', profitToday: '+48.60' },
+        { name: '纳指基金', change: '-0.68%', profitToday: '-1.50' }
+      ]
+    }
+  ]);
+
+  // 定时任务推送缓存（今日推送内容，由AI定时任务写入）
+  let todayPush = loadData('todayPush', {
+    date: '2026-06-04',
+    items: [
+      { time: '09:29', type: '开盘提醒', content: 'A股三大指数低开，科技线承压。纳指ETF/恒生科技逆势高开。科创50低开，芯片板块承压。' },
+      { time: '12:00', type: 'AI新闻与板块分析', overseas: '① 英伟达Q1营收816亿美元创历史新高，但中国市场归零 → 算力芯片/纳指 中性偏利好\n② OpenAI演示手机AI操作系统，或颠覆App Store模式 → 消费电子/AI应用 利好 高\n③ Alphabet拟筹800亿美元加码AI基础设施 → 全球算力/光模块/通信 利好 中', domestic: '① 英伟达联合宇树科技发布人形机器人参考设计，宇树IPO在即 → 机器人 利好 高\n② 美国《安全机器人法案》提案限制中国机器人 → 机器人短期利空/国产自主可控长期利好 中\n③ 发改委要求国产大模型必须适配国产算力芯片 → 科创芯片/半导体 重大利好 高' },
+      { time: '15:04', type: '收盘总结', content: '科创50涨+1.61%，科创芯片涨+2.23%，半导体ETF涨+1.66%，机器人E涨+1.19%。纳指ETF微跌-0.93%，恒生科技大涨+3.82%。中信当日+507.10，同花顺基金当日+234.14。科技全线反弹修复。' }
+    ],
+    synced: false
+  });
+
+  let events = loadData('events', [
+    { date: '2026-05-25', desc: '华为发布韬（τ）定律', impact: '半导体/国产芯片/科创芯片ETF、半导体ETF', level: '高' },
+    { date: '2026-05-27', desc: '长鑫科技IPO上会', impact: '半导体设备、永赢数字经济C', level: '高' },
+    { date: '2026-06-01', desc: '宇树科技科创板IPO上会', impact: '机器人E、机器人ETF、具身智能板块', level: '高' },
+    { date: '2026-06-01', desc: '科创50成分股调整生效', impact: '科创50ETF、持仓成分', level: '中' }
+  ]);
+
+  let logs = loadData('logs', [
+    { date: '2026-02-18', name: '云计算50', action: '买入', amount: 1778.00, reason: '建仓云计算行业ETF' },
+    { date: '2026-02-18', name: '通信ETF', action: '买入', amount: 2667.60, reason: '建仓通信设备ETF' },
+    { date: '2026-02-18', name: '机器人E', action: '买入', amount: 1044.00, reason: '建仓机器人产业ETF' },
+    { date: '2026-02-18', name: '科创芯片', action: '买入', amount: 3402.10, reason: '建仓科创芯片ETF，成本2.617' },
+    { date: '2026-02-18', name: '300ETF', action: '买入', amount: 1416.60, reason: '建仓沪深300ETF' },
+    { date: '2026-02-18', name: '恒指科技', action: '买入', amount: 2077.30, reason: '建仓恒生科技ETF' },
+    { date: '2026-02-18', name: '科创50', action: '买入', amount: 2187.60, reason: '加仓科创50ETF' },
+    { date: '2026-02-18', name: '纳指ETF', action: '买入', amount: 1822.40, reason: '建仓纳斯达克100ETF' },
+    { date: '2026-02-18', name: '纳指基金', action: '买入', amount: 169.50, reason: '建仓纳斯达克指数基金（场外）' },
+    { date: '2026-02-18', name: '科创50', action: '卖出', amount: 561.30, reason: '卖出前期建仓的300股' },
+    { date: '2026-02-18', name: '科创芯片', action: '卖出', amount: 1437.20, reason: '卖出高价买入的400股，止损/止盈' },
+    { date: '2026-02-18', name: '恒指科技', action: '卖出', amount: 1914.30, reason: '卖出前期建仓的3100股' },
+    { date: '2026-05-25', name: '方正富邦致盛A', action: '计划卖出', amount: 2335.61, reason: '迷你基规模过小，存在清盘风险，计划分两批减持' },
+    { date: '2026-05-25', name: '永赢数字经济C', action: '加仓确认', amount: 6974.97, reason: '加仓份额已确认，金额从6654.51增至6974.97，收益+320.46' },
+    { date: '2026-05-25', name: '科创芯片', action: '条件单-止损', amount: 8457.00, reason: '日跌幅超过4%时触发，以卖1价委托卖出全部1300股，委托金额约8457元。创建于2026-05-25 02:24:17，02:25完成测评答题。自动监控中，3天后失效（约2026-05-28）' },
+    { date: '2026-05-26', name: '方正富邦致盛A', action: '卖出', amount: 2282.00, reason: '第一批赎回1170.32份，迷你基清盘风险，预计05-27确认到账' },
+    { date: '2026-05-26', name: '科创芯片', action: '买入', amount: 8245.60, reason: '加仓2200股，成交价3.748。英伟达Q1营收创历史新高+国产算力Day 0适配，推理算力主线确认' },
+    { date: '2026-05-29', name: '机器人E', action: '买入', amount: 946.80, reason: '加仓600股，成交价1.578。机器人板块大跌-4.94%，逢低补仓降低成本。成交时间10:27:26' },
+    { date: '2026-05-29', name: '科创芯片', action: '条件单-买入', amount: 4627.00, reason: '条件单：股价≤3.200元触发买入，卖1价自动委托，金额约4627元。创建于2026-05-29 14:18:39，有效期至2026-06-02' },
+    { date: '2026-05-29', name: '科创芯片', action: '条件单-止盈止损', amount: 5507.00, reason: '条件单：股价上穿≥3.900元卖出止盈；下破≤3.300元卖出止损。买1价自动委托，金额约5507元。创建于2026-05-29 14:45:32，有效期至2026-07-28' },
+    { date: '2026-06-01', name: '机器人E', action: '买入', amount: 2308.80, reason: '加仓1500股，成交价约1.539。机器人E今日跌-1.75%，逢低补仓降低成本至1.596。持仓从1200股增至2700股。' },
+    { date: '2026-06-02', name: '机器人E', action: '条件单-买入', amount: 2986.00, reason: '条件单：股价≤1.510元触发买入，卖1价自动委托，金额约2986元。创建于2026-06-02 22:43:35，有效期5天后（约2026-06-07）。机器人E当前亏损-4.02%，逢低继续补仓降低成本。' },
+    { date: '2026-06-02', name: '电力ETF广发', action: '条件单-买入', amount: 2440.00, reason: '条件单：股价≤1.220元触发买入，卖1价*2000股自动委托，金额约2440元。创建于2026-06-02 10:00:01，有效期4天后（约2026-06-06）。防御配置：电力/公用事业高股息属性，分散科技集中度过高风险。' },
+    { date: '2026-06-02', name: '机器人E', action: '条件单-止盈', amount: 2240.00, reason: '条件单：股价≥1.600元触发卖出止盈，买1价自动委托，1400股，金额约2240元。创建于2026-06-02 22:56:37，有效期至2026-06-07。与≤1.510买入单形成区间交易策略，高位减仓锁定部分利润。' }
+  ]);
+  let diaries = loadData('diaries', [
+    {
+      date: '2026-05-26',
+      best: '目前来说，最满意的应该是设置了科创芯片跌幅超4%的自动条件买入机制。',
+      worst: '目前来说，还没有',
+      reflect: '由于科创芯片在25号那天涨到了将近3.9元每股，所以今天开盘虽然触发了4%降幅就买入的条件，但价格还是偏高，最终以3.7左右成交，有点高。',
+      focus: ''
+    },
+    {
+      date: '2026-05-31',
+      best: '本周26号以后基本上没有令人满意的操作。',
+      worst: '有点蠢的是28/29号这两天没有及时止损，有不少盈利被吐回去了。',
+      reflect: '这些操作不是临时起意，就是个人一直比较看好科技板块，尤其是国产AI算力部分，但是在操作层面还是需要注意，比如设置一些条件单，及时地止盈和止损，在高点别贪心能跑得了，在低点也要沉得住气。',
+      focus: '首要：芯片是否会回调？\n次要：机器人板块怎么配置？非人形+上游？'
+    }
+  ]);
+
+  // Init dates
+  document.getElementById('todayDate').textContent = new Date().toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' });
+  document.getElementById('lDate').value = new Date().toISOString().split('T')[0];
+  document.getElementById('diaryDate').value = new Date().toISOString().split('T')[0];
+  document.getElementById('briefDate').value = new Date().toISOString().split('T')[0];
+
+  // ====== Tab switching ======
+  let currentMainTab = 'dashboard';
+  function switchTab(name) {
+    currentMainTab = name;
+    document.querySelectorAll('[id^="tab-"]').forEach(e => e.classList.add('hidden'));
+    document.getElementById('tab-' + name).classList.remove('hidden');
+    document.querySelectorAll('.nav-btn').forEach(b => {
+      b.classList.remove('active');
+      const oc = b.getAttribute('onclick') || '';
+      if (oc.includes("'" + name + "'") || oc.includes('"' + name + '"')) {
+        b.classList.add('active');
+      }
+    });
+    const badge = document.getElementById('topBadge');
+    if (name === 'holdings') badge.textContent = currentSubTab === 'stock' ? '股票/ETF' : '基金';
+    else if (name === 'watchlist') badge.textContent = currentWatchTab === 'stock' ? '股票观察' : '基金观察';
+    else badge.textContent = '双账户';
+    renderAll();
+  }
+
+  let currentSubTab = 'stock';
+  function switchSubTab(which) {
+    currentSubTab = which;
+    document.getElementById('sub-stock').classList.toggle('hidden', which !== 'stock');
+    document.getElementById('sub-fund').classList.toggle('hidden', which !== 'fund');
+    document.getElementById('btn-stock').classList.toggle('active', which === 'stock');
+    document.getElementById('btn-fund').classList.toggle('active', which === 'fund');
+    document.getElementById('topBadge').textContent = which === 'stock' ? '股票/ETF' : '基金';
+  }
+
+  let currentWatchTab = 'stock';
+  function switchWatchTab(which) {
+    currentWatchTab = which;
+    document.getElementById('watch-stock').classList.toggle('hidden', which !== 'stock');
+    document.getElementById('watch-fund').classList.toggle('hidden', which !== 'fund');
+    document.getElementById('wbtn-stock').classList.toggle('active', which === 'stock');
+    document.getElementById('wbtn-fund').classList.toggle('active', which === 'fund');
+    document.getElementById('topBadge').textContent = which === 'stock' ? '股票观察' : '基金观察';
+  }
+
+  // Modal helpers
+  function openModal(id) { document.getElementById(id).classList.add('active'); document.body.style.overflow = 'hidden'; }
+  function closeModal(id) { document.getElementById(id).classList.remove('active'); document.body.style.overflow = ''; }
+  function openStockModal() { openModal('stockHoldingModal'); }
+  function openFundModal() { openModal('fundHoldingModal'); }
+  function openStockWatchModal() { openModal('stockWatchModal'); }
+  function openFundWatchModal() { openModal('fundWatchModal'); }
+  document.querySelectorAll('.modal-overlay').forEach(m => {
+    m.addEventListener('click', e => { if(e.target === m) { m.classList.remove('active'); document.body.style.overflow = ''; } });
+  });
+
+  // ====== Render functions ======
+  function renderStockHoldings() {
+    const list = document.getElementById('stockHoldingsList');
+    let total = 0, profit = 0, html = '';
+    stockHoldings.forEach((h, i) => {
+      total += h.amount; profit += h.profit;
+      const color = h.profit >= 0 ? 'profit' : 'loss';
+      html += `<div class="holding-item">
+        <div class="holding-info">
+          <div class="name">${h.name} <span style="font-size:11px;color:var(--text2)">${h.code}</span></div>
+          <div class="meta">${h.reason}</div>
+        </div>
+        <div class="holding-data">
+          <div class="value ${color}">¥${h.amount.toFixed(2)}</div>
+          <div class="change ${color}">${h.profit >= 0 ? '+' : ''}${h.profit.toFixed(2)}</div>
+          <button class="btn btn-sm btn-danger" style="margin-top:4px" onclick="deleteStockHolding(${i})">删除</button>
+        </div>
+      </div>`;
+    });
+    html += `<div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);display:flex;justify-content:space-between;font-size:14px;font-weight:600">
+      <span>合计</span><span>¥${total.toFixed(2)} / ${profit >= 0 ? '+' : ''}${profit.toFixed(2)}</span>
+    </div>`;
+    if (!stockHoldings.length) html = '<div class="empty">暂无股票/ETF持仓</div>';
+    list.innerHTML = html;
+  }
+
+  function renderFundHoldings() {
+    const list = document.getElementById('fundHoldingsList');
+    let total = 0, profit = 0, html = '';
+    fundHoldings.forEach((h, i) => {
+      total += h.amount; profit += h.profit;
+      const color = h.profit >= 0 ? 'profit' : 'loss';
+      html += `<div class="holding-item">
+        <div class="holding-info">
+          <div class="name">${h.name} <span style="font-size:11px;color:var(--text2)">${h.code}</span></div>
+          <div class="meta">${h.reason}</div>
+        </div>
+        <div class="holding-data">
+          <div class="value ${color}">¥${h.amount.toFixed(2)}</div>
+          <div class="change ${color}">${h.profit >= 0 ? '+' : ''}${h.profit.toFixed(2)}</div>
+          <div class="meta">今日 ${h.today >= 0 ? '+' : ''}${h.today.toFixed(2)}</div>
+          <button class="btn btn-sm btn-danger" style="margin-top:4px" onclick="deleteFundHolding(${i})">删除</button>
+        </div>
+      </div>`;
+    });
+    html += `<div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);display:flex;justify-content:space-between;font-size:14px;font-weight:600">
+      <span>合计</span><span>¥${total.toFixed(2)} / ${profit >= 0 ? '+' : ''}${profit.toFixed(2)}</span>
+    </div>`;
+    if (!fundHoldings.length) html = '<div class="empty">暂无基金持仓</div>';
+    list.innerHTML = html;
+  }
+
+  function renderStockWatch() {
+    const list = document.getElementById('stockWatchList');
+    if (!stockWatchlist.length) { list.innerHTML = '<div class="empty">暂无股票/ETF观察标的</div>'; return; }
+
+    const sectorStyle = {
+      'AI算力':     { color: '#00e5ff', bg: 'rgba(0,229,255,0.12)',  border: 'rgba(0,229,255,0.25)' },
+      '光模块':     { color: '#ff2d78', bg: 'rgba(255,45,120,0.12)', border: 'rgba(255,45,120,0.25)' },
+      '芯片/半导体': { color: '#b347e6', bg: 'rgba(179,71,230,0.12)', border: 'rgba(179,71,230,0.25)' },
+      '通信':       { color: '#2cb67d', bg: 'rgba(44,182,125,0.12)', border: 'rgba(44,182,125,0.25)' },
+      '机器人':     { color: '#ffa726', bg: 'rgba(255,167,38,0.12)', border: 'rgba(255,167,38,0.25)' },
+      '互联网':     { color: '#7c4dff', bg: 'rgba(124,77,255,0.12)', border: 'rgba(124,77,255,0.25)' },
+      '新能源车':   { color: '#00bfa5', bg: 'rgba(0,191,165,0.12)',  border: 'rgba(0,191,165,0.25)' },
+      '金融科技':   { color: '#ff7043', bg: 'rgba(255,112,67,0.12)', border: 'rgba(255,112,67,0.25)' },
+      '消费电子':   { color: '#42a5f5', bg: 'rgba(66,165,245,0.12)', border: 'rgba(66,165,245,0.25)' },
+      '电力/公用事业': { color: '#00bfa5', bg: 'rgba(0,191,165,0.12)',  border: 'rgba(0,191,165,0.25)' },
+      '其他':       { color: '#8a8ab0', bg: 'rgba(138,138,176,0.12)', border: 'rgba(138,138,176,0.25)' }
+    };
+
+    const groups = {};
+    stockWatchlist.forEach((w, i) => {
+      const s = w.sector || '其他';
+      if (!groups[s]) groups[s] = [];
+      groups[s].push({ item: w, idx: i });
+    });
+
+    const order = ['AI算力','光模块','芯片/半导体','通信','机器人','互联网','新能源车','金融科技','消费电子','电力/公用事业','其他'];
+    let html = '';
+    order.forEach(sector => {
+      if (!groups[sector]) return;
+      const st = sectorStyle[sector] || sectorStyle['其他'];
+      html += `<div style="margin:14px 0 8px;padding:5px 12px;border-radius:10px;background:${st.bg};border:1px solid ${st.border};color:${st.color};font-size:13px;font-weight:600;display:inline-block">${sector} (${groups[sector].length})</div>`;
+      groups[sector].forEach(({ item: w, idx: i }) => {
+        html += `<div class="watch-item">
+          <div class="row">
+            <div><span style="font-weight:600">${w.name}</span> <span style="font-size:11px;color:var(--text2)">${w.code}</span> <span style="font-size:10px;padding:1px 6px;border-radius:4px;background:${st.bg};border:1px solid ${st.border};color:${st.color};margin-left:4px">${w.sector || '其他'}</span></div>
+            <span style="font-size:13px">${w.rating}</span>
+          </div>
+          <div class="reason"><b style="color:var(--cyan)">关注原因：</b>${w.reason}<br><b style="color:var(--pink)">触发条件：</b>${w.trigger}</div>
+          <div style="text-align:right;margin-top:8px"><button class="btn btn-sm btn-danger" onclick="deleteStockWatch(${i})">删除</button></div>
+        </div>`;
+      });
+    });
+    list.innerHTML = html;
+  }
+
+  function renderFundWatch() {
+    const list = document.getElementById('fundWatchList');
+    let html = '';
+    fundWatchlist.forEach((w, i) => {
+      html += `<div class="watch-item">
+        <div class="row">
+          <div><span style="font-weight:600">${w.name}</span> <span style="font-size:11px;color:var(--text2)">${w.code}</span></div>
+          <span style="font-size:13px">${w.rating}</span>
+        </div>
+        <div class="reason"><b style="color:var(--cyan)">关注原因：</b>${w.reason}<br><b style="color:var(--pink)">触发条件：</b>${w.trigger}</div>
+        <div style="text-align:right;margin-top:8px"><button class="btn btn-sm btn-danger" onclick="deleteFundWatch(${i})">删除</button></div>
+      </div>`;
+    });
+    if (!fundWatchlist.length) html = '<div class="empty">暂无基金观察标的</div>';
+    list.innerHTML = html;
+  }
+
+  const checklistItems = [
+    { id: 'ck1', text: '<b>这条买入有充足理由吗？</b>不是"感觉会涨"，是具体逻辑。' },
+    { id: 'ck2', text: '<b>单一方向会超过40%吗？</b>全仓一个方向是赌博，不是投资。' },
+    { id: 'ck3', text: '<b>这是追高还是回调买入？</b>月涨30%+的板块，进去就是接盘。' },
+    { id: 'ck4', text: '<b>如果明天跌5%，我会慌吗？</b>慌就说明仓位重了。' },
+    { id: 'ck5', text: '<b>我有退出计划吗？</b>什么条件止损/止盈？写清楚再下单。' },
+    { id: 'ck6', text: '<b>这笔操作我能在日记里坦然写下吗？</b>心虚就别做。' }
+  ];
+  function renderChecklist() {
+    const box = document.getElementById('checklistItems');
+    let html = '';
+    checklistItems.forEach(item => {
+      const checked = loadData('check_' + item.id, false);
+      html += `<label class="check-item" style="cursor:pointer">
+        <input type="checkbox" ${checked ? 'checked' : ''} onchange="saveData('check_${item.id}', this.checked)">
+        <div class="text">${item.text}</div>
+      </label>`;
+    });
+    box.innerHTML = html;
+  }
+
+  function renderLogs() {
+    const list = document.getElementById('logList');
+    let html = '';
+    logs.slice().reverse().forEach(l => {
+      html += `<div class="holding-item">
+        <div class="holding-info">
+          <div class="name">${l.date} · ${l.name}</div>
+          <div class="meta">${l.action} ${l.amount ? '¥' + l.amount.toFixed(2) : ''}</div>
+          <div class="meta">${l.reason}</div>
+        </div>
+      </div>`;
+    });
+    if (!logs.length) html = '<div class="empty">暂无操作记录</div>';
+    list.innerHTML = html;
+  }
+
+  function renderDiaries() {
+    const list = document.getElementById('diaryList');
+    let html = '';
+    diaries.slice().reverse().forEach(d => {
+      html += `<div class="card" style="margin-bottom:14px">
+        <div class="card-title"><span>${d.date}</span></div>
+        ${d.best ? `<div style="font-size:13px;margin:6px 0"><b style="color:var(--green)">最满意：</b>${d.best}</div>` : ''}
+        ${d.worst ? `<div style="font-size:13px;margin:6px 0"><b style="color:var(--pink)">最蠢：</b>${d.worst}</div>` : ''}
+        ${d.reflect ? `<div style="font-size:13px;margin:6px 0"><b>复盘：</b>${d.reflect}</div>` : ''}
+        ${d.focus ? `<div style="font-size:13px;margin:6px 0"><b>下周关注：</b>${d.focus}</div>` : ''}
+      </div>`;
+    });
+    if (!diaries.length) html = '<div class="empty">暂无日记</div>';
+    list.innerHTML = html;
+  }
+
+  function renderBriefHistory() {
+    const box = document.getElementById('briefHistory');
+    let html = '';
+    if (!Array.isArray(briefs)) {
+      box.innerHTML = '<div class="empty">简报数据加载异常</div>';
+      return;
+    }
+    briefs.slice().reverse().forEach(b => {
+      if (!b || typeof b !== 'object') return;
+      html += `<div class="card" style="margin-bottom:14px">
+        <div class="card-title"><span>${b.date || '无日期'} ${b.title || ''}</span></div>`;
+      if (b.overseas) html += `<div style="font-size:12px;color:var(--cyan);margin:8px 0 4px"><b>海外事件</b></div><div style="font-size:12px;color:var(--text2);line-height:1.6;white-space:pre-line">${b.overseas}</div>`;
+      if (b.domestic) html += `<div style="font-size:12px;color:var(--pink);margin:8px 0 4px"><b>国内事件</b></div><div style="font-size:12px;color:var(--text2);line-height:1.6;white-space:pre-line">${b.domestic}</div>`;
+      if (b.market) html += `<div style="font-size:12px;color:var(--text);margin:8px 0 4px"><b>市场/持仓</b></div><div style="font-size:12px;color:var(--text2);line-height:1.6">${b.market}</div>`;
+      if (b.holdings && b.holdings.length) {
+        html += `<div style="margin:10px 0 6px"><b style="font-size:12px;color:var(--text)">📊 当日持仓表现</b></div>`;
+        html += `<div style="display:flex;flex-wrap:wrap;gap:6px">`;
+        b.holdings.forEach(h => {
+          const color = h.change && h.change.startsWith('+') ? 'var(--pink)' : (h.change && h.change.startsWith('-') ? 'var(--green)' : 'var(--text2)');
+          html += `<div style="flex:1;min-width:100px;padding:8px 10px;background:var(--card2);border:1px solid var(--border);border-radius:10px">
+            <div style="font-size:13px;font-weight:600">${h.name}</div>
+            <div style="font-size:12px;color:${color};margin-top:2px">${h.change || ''}</div>
+            <div style="font-size:11px;color:var(--text2)">当日 ${h.profitToday ? (h.profitToday >= 0 ? '+' : '') + h.profitToday : '-'}</div>
+          </div>`;
+        });
+        html += `</div>`;
+      }
+      if (b.summary) html += `<div style="font-size:12px;color:var(--text);margin-top:8px;background:rgba(0,229,255,0.06);padding:8px;border-radius:8px"><b>综合判断：</b>${b.summary}</div>`;
+      html += '</div>';
+    });
+    if (!html) html = '<div class="empty">暂无简报记录</div>';
+    box.innerHTML = html;
+  }
+
+  function renderTodayPush() {
+    const box = document.getElementById('todayPushCard');
+    const today = new Date().toISOString().split('T')[0];
+    
+    // 检查是否有今天的推送数据
+    if (!todayPush || todayPush.date !== today || !todayPush.items || !todayPush.items.length) {
+      box.innerHTML = '';
+      return;
+    }
+    
+    // 检查是否已经同步过
+    const alreadySynced = todayPush.synced === true;
+    
+    let html = `<div class="card">
+      <div class="card-title">
+        <span>今日定时任务推送</span>
+        <span class="tag" style="${alreadySynced ? 'background:rgba(44,182,125,0.12);color:var(--green);border-color:rgba(44,182,125,0.25)' : ''}">${alreadySynced ? '已同步' : '待同步'}</span>
+      </div>
+      <div style="font-size:12px;color:var(--text2);line-height:1.8">`;
+    
+    todayPush.items.forEach(item => {
+      const typeColor = item.type === '开盘提醒' ? 'var(--cyan)' : item.type === 'AI新闻与板块分析' ? 'var(--purple)' : 'var(--pink)';
+      html += `<div style="margin-bottom:10px;padding:8px 10px;border-radius:8px;background:var(--card2);border:1px solid var(--border)">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+          <span style="font-size:11px;color:${typeColor};font-weight:600">${item.time} · ${item.type}</span>
+        </div>
+        <div style="font-size:12px;color:var(--text2);white-space:pre-line">${item.content || item.overseas || ''}</div>
+      </div>`;
+    });
+    
+    html += `</div>`;
+    
+    if (!alreadySynced) {
+      html += `<div style="margin-top:12px">
+        <button class="btn btn-primary" onclick="syncPushToBrief()"><span style="font-size:16px;margin-right:4px">↻</span>同步到简报历史</button>
+      </div>`;
+    }
+    
+    html += '</div>';
+    box.innerHTML = html;
+  }
+
+  function syncPushToBrief() {
+    if (!todayPush || !todayPush.items) return;
+    
+    const today = todayPush.date;
+    const pushItems = todayPush.items;
+    
+    // 合并推送内容为一条简报
+    let overseas = '', domestic = '', market = '', summary = '';
+    
+    pushItems.forEach(item => {
+      if (item.type === 'AI新闻与板块分析') {
+        overseas = item.overseas || '';
+        domestic = item.domestic || '';
+      }
+      if (item.type === '开盘提醒' || item.type === '收盘总结') {
+        market = (market ? market + '\n' : '') + (item.content || '');
+      }
+    });
+    
+    // 从收盘总结中提取综合判断（如果有的话）
+    const closeItem = pushItems.find(i => i.type === '收盘总结');
+    if (closeItem && closeItem.content) {
+      summary = closeItem.content.split('。').slice(-2).join('。');
+    }
+    
+    const newBrief = {
+      date: today,
+      title: today.replace(/-/g, '').slice(4) + ' 定时任务简报',
+      overseas: overseas,
+      domestic: domestic,
+      market: market,
+      summary: summary || '详见各时段推送内容'
+    };
+    
+    // 避免重复添加
+    const exists = briefs.some(b => b.date === today && b.title && b.title.includes('定时任务'));
+    if (!exists) {
+      briefs.push(newBrief);
+      saveData('briefs', briefs);
+    }
+    
+    // 标记已同步
+    todayPush.synced = true;
+    saveData('todayPush', todayPush);
+    
+    renderAll();
+  }
+
+  function renderEvents() {
+    const list = document.getElementById('eventList');
+    let html = '';
+    if (!Array.isArray(events)) {
+      list.innerHTML = '<div class="empty">事件数据加载异常</div>';
+      return;
+    }
+    events.slice().sort((a, b) => (a.date || '').localeCompare(b.date || '')).forEach((e, i) => {
+      if (!e || typeof e !== 'object') return;
+      const color = e.level === '高' ? 'var(--pink)' : e.level === '中' ? 'var(--cyan)' : 'var(--text2)';
+      html += `<div class="holding-item" style="padding:12px 0">
+        <div class="holding-info">
+          <div class="name" style="font-size:14px">${e.date || '无日期'} · ${e.desc || ''}</div>
+          <div class="meta">影响: ${e.impact || ''}</div>
+        </div>
+        <div class="holding-data">
+          <span style="font-size:12px;color:${color};font-weight:600">${e.level || '中'}</span>
+          <button class="btn btn-sm btn-danger" style="margin-top:6px" onclick="deleteEvent(${i})">删除</button>
+        </div>
+      </div>`;
+    });
+    if (!html) html = '<div class="empty">暂无事件</div>';
+    list.innerHTML = html;
+  }
+
+  // ====== Save functions ======
+  function saveStockHolding() {
+    const h = { code: document.getElementById('hCode').value, name: document.getElementById('hName').value, type: document.getElementById('hType').value, amount: parseFloat(document.getElementById('hAmount').value) || 0, profit: parseFloat(document.getElementById('hProfit').value) || 0, reason: document.getElementById('hReason').value, target: document.getElementById('hTarget').value };
+    if (!h.code || !h.name) { alert('请填写代码和名称'); return; }
+    stockHoldings.push(h); saveData('stockHoldings', stockHoldings);
+    closeModal('stockHoldingModal');
+    ['hCode','hName','hAmount','hProfit','hReason','hTarget'].forEach(id => document.getElementById(id).value = '');
+    renderAll();
+  }
+  function deleteStockHolding(i) { if(confirm('确定删除？')) { stockHoldings.splice(i,1); saveData('stockHoldings', stockHoldings); renderAll(); } }
+
+  function saveFundHolding() {
+    const h = { code: document.getElementById('fhCode').value, name: document.getElementById('fhName').value, type: '基金', amount: parseFloat(document.getElementById('fhAmount').value) || 0, profit: parseFloat(document.getElementById('fhProfit').value) || 0, today: parseFloat(document.getElementById('fhToday').value) || 0, reason: document.getElementById('fhReason').value, target: document.getElementById('fhTarget').value };
+    if (!h.code || !h.name) { alert('请填写代码和名称'); return; }
+    fundHoldings.push(h); saveData('fundHoldings', fundHoldings);
+    closeModal('fundHoldingModal');
+    ['fhCode','fhName','fhAmount','fhProfit','fhToday','fhReason','fhTarget'].forEach(id => document.getElementById(id).value = '');
+    renderAll();
+  }
+  function deleteFundHolding(i) { if(confirm('确定删除？')) { fundHoldings.splice(i,1); saveData('fundHoldings', fundHoldings); renderAll(); } }
+
+  function saveStockWatch() {
+    const w = { code: document.getElementById('swCode').value, name: document.getElementById('swName').value, type: '股票', reason: document.getElementById('swReason').value, trigger: document.getElementById('swTrigger').value, rating: document.getElementById('swRating').value };
+    if (!w.name) { alert('请填写名称'); return; }
+    stockWatchlist.push(w); saveData('stockWatchlist', stockWatchlist);
+    closeModal('stockWatchModal');
+    ['swCode','swName','swReason','swTrigger'].forEach(id => document.getElementById(id).value = '');
+    renderAll();
+  }
+  function deleteStockWatch(i) { if(confirm('确定删除？')) { stockWatchlist.splice(i,1); saveData('stockWatchlist', stockWatchlist); renderAll(); } }
+
+  function saveFundWatch() {
+    const w = { code: document.getElementById('fwCode').value, name: document.getElementById('fwName').value, reason: document.getElementById('fwReason').value, trigger: document.getElementById('fwTrigger').value, rating: document.getElementById('fwRating').value };
+    if (!w.name) { alert('请填写名称'); return; }
+    fundWatchlist.push(w); saveData('fundWatchlist', fundWatchlist);
+    closeModal('fundWatchModal');
+    ['fwCode','fwName','fwReason','fwTrigger'].forEach(id => document.getElementById(id).value = '');
+    renderAll();
+  }
+  function deleteFundWatch(i) { if(confirm('确定删除？')) { fundWatchlist.splice(i,1); saveData('fundWatchlist', fundWatchlist); renderAll(); } }
+
+  function saveLog() {
+    const l = { date: document.getElementById('lDate').value, name: document.getElementById('lName').value, action: document.getElementById('lAction').value, amount: parseFloat(document.getElementById('lAmount').value) || 0, reason: document.getElementById('lReason').value };
+    if (!l.date || !l.name) { alert('请填写日期和名称'); return; }
+    logs.push(l); saveData('logs', logs);
+    ['lName','lAmount','lReason'].forEach(id => document.getElementById(id).value = '');
+    renderAll();
+  }
+
+  function saveDiary() {
+    const d = { date: document.getElementById('diaryDate').value, best: document.getElementById('diaryBest').value, worst: document.getElementById('diaryWorst').value, reflect: document.getElementById('diaryReflect').value, focus: document.getElementById('diaryFocus').value };
+    if (!d.date) { alert('请填写日期'); return; }
+    diaries.push(d); saveData('diaries', diaries);
+    ['diaryBest','diaryWorst','diaryReflect','diaryFocus'].forEach(id => document.getElementById(id).value = '');
+    renderAll();
+  }
+
+  function saveBrief() {
+    const b = { date: document.getElementById('briefDate').value, title: document.getElementById('briefTitle').value, overseas: document.getElementById('briefOverseas').value, domestic: document.getElementById('briefDomestic').value, market: document.getElementById('briefMarket').value, summary: document.getElementById('briefSummary').value };
+    if (!b.date) { alert('请填写日期'); return; }
+    briefs.push(b); saveData('briefs', briefs);
+    ['briefTitle','briefOverseas','briefDomestic','briefMarket','briefSummary'].forEach(id => document.getElementById(id).value = '');
+    renderAll();
+  }
+
+  function saveEvent() {
+    const e = { date: document.getElementById('eventDate').value, desc: document.getElementById('eventDesc').value, impact: document.getElementById('eventImpact').value, level: document.getElementById('eventLevel').value };
+    if (!e.date) { alert('请填写日期'); return; }
+    events.push(e); saveData('events', events);
+    ['eventDesc','eventImpact'].forEach(id => document.getElementById(id).value = '');
+    renderAll();
+  }
+  function deleteEvent(i) { if(confirm('确定删除？')) { events.splice(i,1); saveData('events', events); renderAll(); } }
+
+  // ====== Data export / import ======
+  function exportData() {
+    const data = {};
+    ['stockHoldings','fundHoldings','stockWatchlist','fundWatchlist','briefs','events','logs','diaries','todayPush'].forEach(k => {
+      const v = localStorage.getItem('inv_' + k);
+      if (v) data[k] = JSON.parse(v);
+    });
+    data._exportTime = new Date().toISOString();
+    data._version = DATA_VERSION;
+    const json = JSON.stringify(data, null, 2);
+    document.getElementById('dataJsonBox').value = json;
+    // 尝试自动复制
+    try {
+      navigator.clipboard.writeText(json).then(() => alert('已复制到剪贴板，直接发给我即可'));
+    } catch(e) {
+      alert('导出完成，请手动复制文本框里的JSON内容发给我');
+    }
+  }
+
+  function importData() {
+    try {
+      const raw = document.getElementById('dataJsonBox').value.trim();
+      if (!raw) { alert('文本框为空'); return; }
+      const data = JSON.parse(raw);
+      let count = 0;
+      ['stockHoldings','fundHoldings','stockWatchlist','fundWatchlist','briefs','events','logs','diaries','todayPush'].forEach(k => {
+        if (data[k] !== undefined) {
+          localStorage.setItem('inv_' + k, JSON.stringify(data[k]));
+          count++;
+        }
+      });
+      alert('导入成功，已恢复 ' + count + ' 项数据，页面即将刷新');
+      location.reload();
+    } catch(e) {
+      alert('导入失败：' + e.message);
+    }
+  }
+
+  function clearAllData() {
+    if (!confirm('确定清空所有本地数据？此操作不可恢复，建议先导出备份。')) return;
+    ['stockHoldings','fundHoldings','stockWatchlist','fundWatchlist','briefs','events','logs','diaries','todayPush','version'].forEach(k => localStorage.removeItem('inv_' + k));
+    alert('已清空，页面即将刷新');
+    location.reload();
+  }
+
+  // ====== Master render ======
+  function renderAll() {
+    renderStockHoldings();
+    renderFundHoldings();
+    renderStockWatch();
+    renderFundWatch();
+    renderChecklist();
+    renderLogs();
+    renderDiaries();
+    renderBriefHistory();
+    renderTodayPush();
+    renderEvents();
+  }
+
+  // Init
+  renderAll();
+</script>
+</body>
+</html>

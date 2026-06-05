@@ -1,0 +1,819 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>美股AI泡沫？高盛重磅预测：亚太机器人被低估21%</title>
+<style>
+  :root {
+    --bg: #050510;
+    --bg2: #0a0a20;
+    --card: rgba(18,18,38,0.72);
+    --card2: rgba(22,22,48,0.55);
+    --text: #e0e0f0;
+    --text2: #8a8ab0;
+    --text3: #6a6a90;
+    --pink: #ff2d78;
+    --cyan: #00e5ff;
+    --purple: #b347e6;
+    --accent: var(--cyan);
+    --border: rgba(120,100,220,0.25);
+    --glow: 0 0 20px rgba(0,229,255,0.15);
+    --glow-pink: 0 0 20px rgba(255,45,120,0.15);
+    --glow-purple: 0 0 20px rgba(179,71,230,0.15);
+    --green: #2cb67d;
+    --orange: #ff9f43;
+    --yellow: #ffd700;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.7;
+    min-height: 100vh;
+    overflow-x: hidden;
+    padding-bottom: 80px;
+    font-size: 15px;
+  }
+  #particles {
+    position: fixed; top:0; left:0; width:100%; height:100%; z-index:0; pointer-events:none;
+  }
+  .container {
+    position: relative; z-index: 1; max-width: 580px; margin: 0 auto; padding: 16px;
+  }
+
+  /* ===== Topbar ===== */
+  .topbar {
+    position: sticky; top: 0; z-index: 50;
+    background: rgba(5,5,16,0.85);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border-bottom: 1px solid var(--border);
+    margin: -16px -16px 20px;
+    padding: 12px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .topbar .title {
+    font-size: 17px;
+    font-weight: 700;
+    background: linear-gradient(90deg, var(--cyan), var(--purple));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .topbar .badge {
+    font-size: 11px;
+    color: var(--text2);
+    background: var(--card2);
+    padding: 4px 10px;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+  }
+
+  /* ===== Hero ===== */
+  .hero {
+    text-align: center;
+    padding: 16px 0 24px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 24px;
+  }
+  .hero h1 {
+    font-size: 21px;
+    font-weight: 700;
+    line-height: 1.4;
+    background: linear-gradient(135deg, var(--cyan), var(--purple), var(--pink));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: 12px;
+  }
+  .hero .meta {
+    font-size: 12px;
+    color: var(--text3);
+    display: flex;
+    justify-content: center;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  .hero .meta span {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  /* ===== Cards ===== */
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 18px;
+    margin-bottom: 16px;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    transition: border-color 0.3s;
+  }
+  .card:hover { border-color: rgba(120,100,220,0.4); }
+  .card-title {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 14px;
+    font-size: 15px;
+    font-weight: 600;
+  }
+
+  /* ===== Tags ===== */
+  .tag {
+    font-size: 11px;
+    padding: 3px 8px;
+    border-radius: 8px;
+    background: rgba(0,229,255,0.12);
+    color: var(--cyan);
+    border: 1px solid rgba(0,229,255,0.25);
+    white-space: nowrap;
+  }
+  .tag.pink { background: rgba(255,45,120,0.12); color: var(--pink); border-color: rgba(255,45,120,0.25); }
+  .tag.purple { background: rgba(179,71,230,0.12); color: var(--purple); border-color: rgba(179,71,230,0.25); }
+  .tag.green { background: rgba(44,182,125,0.12); color: var(--green); border-color: rgba(44,182,125,0.25); }
+  .tag.orange { background: rgba(255,159,67,0.12); color: var(--orange); border-color: rgba(255,159,67,0.25); }
+
+  /* ===== Note Cards ===== */
+  .note-card {
+    background: rgba(0,229,255,0.06);
+    border: 1px solid rgba(0,229,255,0.15);
+    border-radius: 12px;
+    padding: 12px 14px;
+    font-size: 13px;
+    color: var(--text2);
+    line-height: 1.7;
+    margin-bottom: 14px;
+  }
+  .note-card.pink { background: rgba(255,45,120,0.06); border-color: rgba(255,45,120,0.15); }
+  .note-card.purple { background: rgba(179,71,230,0.06); border-color: rgba(179,71,230,0.15); }
+  .note-card.green { background: rgba(44,182,125,0.06); border-color: rgba(44,182,125,0.15); }
+  .note-card.orange { background: rgba(255,159,67,0.06); border-color: rgba(255,159,67,0.15); }
+
+  /* ===== Section Heading ===== */
+  .section-num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    background: linear-gradient(135deg, var(--cyan), var(--purple));
+    color: #fff;
+    font-size: 13px;
+    font-weight: 700;
+    margin-right: 10px;
+    flex-shrink: 0;
+  }
+  .section-heading {
+    display: flex;
+    align-items: center;
+    font-size: 16px;
+    font-weight: 700;
+    margin: 24px 0 14px;
+    color: var(--text);
+  }
+
+  /* ===== Content ===== */
+  .content p {
+    margin-bottom: 12px;
+    color: var(--text2);
+    font-size: 14px;
+    line-height: 1.8;
+  }
+  .content p strong { color: var(--text); font-weight: 600; }
+  .content .highlight {
+    background: rgba(255,45,120,0.15);
+    color: var(--pink);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-weight: 600;
+  }
+
+  /* ===== Data Card (for lists) ===== */
+  .data-card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px;
+    margin: 14px 0;
+  }
+  .data-card-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--yellow);
+    margin-bottom: 10px;
+  }
+  .data-card ul {
+    list-style: none;
+    padding: 0;
+  }
+  .data-card li {
+    padding: 8px 0 8px 20px;
+    position: relative;
+    font-size: 14px;
+    line-height: 1.7;
+    color: var(--text2);
+    border-bottom: 1px solid var(--border);
+  }
+  .data-card li:last-child { border-bottom: none; }
+  .data-card li::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 14px;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--cyan), var(--purple));
+  }
+  .data-card li strong { color: var(--text); }
+
+  /* ===== Stat Row ===== */
+  .stat-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    margin: 14px 0;
+  }
+  .stat-box {
+    flex: 1;
+    text-align: center;
+    padding: 14px 6px;
+    background: var(--card2);
+    border-radius: 12px;
+    border: 1px solid var(--border);
+  }
+  .stat-box .label {
+    font-size: 11px;
+    color: var(--text2);
+    margin-bottom: 6px;
+  }
+  .stat-box .value {
+    font-size: 16px;
+    font-weight: 700;
+  }
+
+  /* ===== Divider ===== */
+  .divider {
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--border), transparent);
+    margin: 24px 0;
+  }
+
+  /* ===== Key Finding ===== */
+  .key-finding {
+    background: linear-gradient(135deg, rgba(0,229,255,0.08), rgba(179,71,230,0.08));
+    border: 1px solid rgba(0,229,255,0.2);
+    border-radius: 14px;
+    padding: 18px;
+    margin: 16px 0;
+  }
+  .key-finding .kf-title {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--cyan);
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .key-finding .kf-body {
+    font-size: 14px;
+    color: var(--text2);
+    line-height: 1.7;
+  }
+  .key-finding .kf-body strong { color: var(--text); }
+
+  /* ===== Highlight Bar ===== */
+  .highlight-bar {
+    border-left: 3px solid var(--cyan);
+    padding-left: 14px;
+    margin: 14px 0;
+    color: var(--text2);
+    font-size: 14px;
+    line-height: 1.7;
+  }
+  .highlight-bar.pink { border-left-color: var(--pink); }
+  .highlight-bar.purple { border-left-color: var(--purple); }
+
+  /* ===== Bottom Nav ===== */
+  .nav-bar {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 100;
+    background: rgba(5,5,16,0.92);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-top: 1px solid var(--border);
+    display: flex;
+    justify-content: space-around;
+    padding: 8px 0 calc(8px + env(safe-area-inset-bottom));
+  }
+  .nav-btn {
+    background: none;
+    border: none;
+    color: var(--text2);
+    font-size: 10px;
+    padding: 4px 6px;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    transition: all 0.2s;
+    text-decoration: none;
+  }
+  .nav-btn.active { color: var(--cyan); }
+
+  /* ===== Scroll Top ===== */
+  .scroll-top {
+    position: fixed;
+    bottom: 70px;
+    right: 16px;
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    background: var(--card);
+    border: 1px solid var(--border);
+    color: var(--cyan);
+    font-size: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: 99;
+    backdrop-filter: blur(10px);
+    transition: all 0.3s;
+    opacity: 0;
+    pointer-events: none;
+  }
+  .scroll-top.visible {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .scroll-top:hover {
+    border-color: var(--cyan);
+    box-shadow: var(--glow);
+  }
+
+  /* ===== Footer ===== */
+  .footer-note {
+    text-align: center;
+    font-size: 12px;
+    color: var(--text3);
+    margin-top: 8px;
+    margin-bottom: 24px;
+  }
+
+  /* ===== Disclaimer ===== */
+  .disclaimer {
+    background: rgba(255,193,7,0.06);
+    border: 1px solid rgba(255,193,7,0.2);
+    border-radius: 12px;
+    padding: 14px;
+    margin-top: 20px;
+    font-size: 12px;
+    color: var(--orange);
+    line-height: 1.6;
+  }
+</style>
+</head>
+<body>
+<div id="particles"></div>
+
+<div class="container">
+
+  <!-- Topbar -->
+  <div class="topbar">
+    <div class="title">AGI2Rich · 研报精选</div>
+    <div class="badge">高盛</div>
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <h1>美股AI泡沫？高盛重磅预测：<br>亚太机器人被低估21%</h1>
+    <div class="meta">
+      <span>UP主：向陽說</span>
+      <span>2026-05-28</span>
+      <span>约28分钟</span>
+    </div>
+  </div>
+
+  <!-- Intro -->
+  <div class="card">
+    <div class="note-card">
+      本文为 Bilibili 视频《美股AI泡沫？高盛重磅预测：亚太机器人被低估21%，谁在悄悄布局？》的AI语音识别文字稿。视频解读高盛2026年5月发布的亚太机器人产业深度调研报告，涵盖AI投资风向转变、具身智能技术突破、数据工厂商业模式、产业链投资框架等核心内容。
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- Section: Opening -->
+  <div class="section-heading">
+    <span class="section-num"></span>
+    开场：AI投资风向大转弯
+  </div>
+  <div class="card">
+    <div class="content">
+      <p>大家好，我是向阳。我们都知道从2022年底那个叫ChatGPT的家伙横空出世，一直到2025年我们在吵什么？我们在疯狂地吵算力，对不对？因为英伟达的显卡被抢得比限量版还要夸张，硅谷的巨头们为了建数据中心恨不得把核电站都给买下来。</p>
+      <p>但时间来到2026年5月的今天，风向变了。就在这几天，华尔街的顶级投行高盛刚刚干了一件大事。他们的股票策略师Jacky Liang带着一帮顶尖分析师，在5月18号到22号这短短5天时间里，像特种兵一样连着转地跑了香港、深圳和北京。他们不是去喝茶聊天的，而是实地去看了<span class="highlight">14家目前最顶级的机器人和具身智能企业</span>。</p>
+      <div class="highlight-bar pink">
+        他们带回来的结论是什么？用高盛驻新加坡交易员Peter Sieren的原话来说：<strong style="color:var(--pink)">"AI的投资叙事正在从基础设施层猛烈地向应用层切换，而人形机器人正在成为下一个最清晰的可以直接变现的印钞机。"</strong>
+      </div>
+      <p>而且高盛还发现了一个反直觉的现象：在这个即将引爆万亿美金的赛道里，最肥的筹码居然不在美国，而在咱们亚太地区。这里的核心标的市盈率居然比美国同行足足打了八折，性价比简直高到离谱。你说这是不是有点意思了？</p>
+      <p>那些被关在服务器里的AI到底是怎么长出赛博朋克的双手和双脚的？为什么偏偏在2026年的这个节点资本开始疯狂下注？而我们普通人又该怎么在这场从云端跌落凡间的技术大爆炸中提前布局，搞到属于自己的那一波红利？这背后的水可是深得狠了，不仅涉及硬核黑科技，还牵扯到全球人口老龄化的结构性变量，甚至还有大国之间在高端制造供应链上的贴身肉搏。</p>
+      <p>所以咱们今天就来一口气硬核地扒一扒高盛这份两城五天的年中调研报告背后到底藏着怎样的底层逻辑。</p>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- Section 1 -->
+  <div class="section-heading">
+    <span class="section-num">1</span>
+    从云端跌落凡间：为什么AI必须拥有肉体
+  </div>
+  <div class="card">
+    <div class="content">
+      <p>要理解现在的市场在吵什么，我们必须先做个历史的切片。19世纪美国的铁路大开发时代，最先赚到大钱的是谁？是那些卖钢铁的、卖枕木的、卖炸药的，还有那些把炸药藏在潮水里开山炸石的疯狂模样。可是当横跨每州大陆的铁路铺好之后，赚钱的主力军就变了，变成了西尔斯百货这种利用铁路搞邮购的零售商，变成了利用铁路运输冷冻肉的屠宰场。</p>
+      <p>回到我们AI的叙事里，也是一模一样的道理。2023年到2025年，这叫什么？这叫修路时代。英伟达的GPU、台积电的代工产能、光模块、液冷系统，这些全都是在为AI修高速公路。资本在那个阶段闭着眼睛买基建股就行了。但是到了2026年的今天，高速公路已经修得差不多了，模型规模正在向400亿到800亿参数量级迁移。由于现阶段模型能力和成本受限，大家在寻找落地场景。这时候资本的内心是焦虑的，投资人开始敲桌子了："嘿，路修好了，你的车呢？你靠什么把这些智商变现？"</p>
+      <p>你看，如果AI只停留在软件层面，它能对付的行业其实很有限。它可以干掉一部分文案策划师、初级程序员，甚至可以帮你做财报分析。但请注意，这些都叫信息处理。而我们这个地球上真正占据GDP大头的是实体经济——是制造、是物流、是建筑、是农业，是实实在在的物理世界。</p>
+      <div class="key-finding">
+        <div class="kf-title" style="color:var(--purple)">莫拉维克悖论</div>
+        <div class="kf-body">
+          上世纪80年代人工智能研究者发现的一个反直觉现象：让电脑去下国际象棋、去证明数学定理其实非常容易，只需要很少的计算能力。但是如果你想让电脑像一个三岁小孩那样感知周围的世界，分辨出一支笔，并且伸出手稳稳地抓住一个水杯，这反而需要庞大的计算资源。对AI而言，<strong>动脑容易，动手难入登天</strong>。
+        </div>
+      </div>
+      <p>在过去我们没法解决这个问题。传统的工业机器人是怎么工作的？你如果在汽车流水线上看过那种巨大的机械臂，你会发现他们其实就是个瞎子和傻子。工程师必须在后台写死一套严密的程序："带马向前移动X厘米，向下转动Y度，施加Z牛顿的力。"这种机器人只能在稳定、永远不会变化的封闭环境里工作。一旦你要加工的那个零件稍微偏了哪怕一毫米，或者前面突然走过来一个人，他就全乱套，甚至会造成严重的生产事故。这就是为什么过去几十年机器人只存在于高度标准化的重工业里，根本走不进我们的日常生活和复杂的商业场景。</p>
+      <div class="note-card pink">
+        <strong style="color:var(--pink)">结构性顺风：劳动力短缺</strong><br>
+        高盛在报告里重点提到了两个字：<strong>短缺</strong>。日本、韩国面临的最大宏观基本面是老龄化、出生率下降，劳动力成本以肉眼可见的速度飙升。工厂老板们手里拿着订单，转头一看车间里根本招不到人。让AI从云端跌落凡间，拥有一个能够感知物理世界、能够干脏活累活的肉体，已经不再是科幻小说里的浪漫幻想，而是<strong>全球制造业生死存亡的刚需</strong>。
+      </div>
+      <p>所以让AI从云端跌落凡间，拥有一个能够感知物理世界、能够干脏活累活的肉体，已经不再是科幻小说里的浪漫幻想，而是全球制造业生死存亡的刚需。高盛驻新加坡的交易员Peter Sieren敏锐地捕捉到了这一点：资金已经开始抛弃那些纯炒故事的软件SaaS，疯狂向能够提供自动化解决方案的硬核机器人标的轮动。因为这个世界的底层逻辑就是：谁能最先让AI在现实世界里端起那个水杯，谁就能印出下一个10年的钞票。</p>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- Section 2 -->
+  <div class="section-heading">
+    <span class="section-num">2</span>
+    赛博朋克的神经系统：VLA与世界模型的终极融合
+  </div>
+  <div class="card">
+    <div class="content">
+      <p>好，既然方向明确了，那技术上到底怎么实现呢？难道就是给电脑装上轮子和钳子那么简单吗？当然不是。我跟你说，高盛这次跑了北京、深圳、香港，跟越疆、优必选、星动纪元、智元这些头部企业聊了一圈之后，最让他们感到深受鼓舞的是两个硬核的技术名词的化学反应。这两个词你一定要记住，因为他们就是这一轮机器人革命的脑黄金。</p>
+
+      <div class="data-card">
+        <div class="data-card-title">两大核心技术</div>
+        <ul>
+          <li><strong>VLA（Vision Language Action / 视觉语言动作模型）</strong>：或其进阶版VTA（T代表Tactile触觉）——机器人的"大脑"</li>
+          <li><strong>世界模型（World Model）</strong>：机器人的"小脑"或直觉中枢</li>
+        </ul>
+      </div>
+
+      <p>咱们先说VLA。你不觉得过去我们操控机器人的方式很蠢吗？全靠写死代码。但人是怎么学习的？比如你叫一个三岁小孩去拿桌子上的苹果，你只需要指着苹果说"把那个红色的苹果递给我"。小孩的眼睛看到了苹果，小孩听懂了你的指令，然后大脑瞬间规划出一条手臂运动的轨迹，走过去拿起来。这就是VLA的本质。他把以前完全割裂的技术——计算机视觉、自然语言处理和机器人控制算法，用神经网络这口大锅彻底炖在了一起。</p>
+      <p>这意味着什么？意味着机器人开始拥有常识了。当他看到面前有一个玻璃杯和一个纸杯，你让他拿杯子，他不用你写代码告诉他施加多少牛顿的力。他自己就知道：拿玻璃杯可以稍微用点力，你纸杯得轻一点，不然水就洒了。如果在这个基础上再叠加触觉传感器，那他就不仅能看见，还能摸出这个东西是软的还是硬的、是滑的还是涩的。</p>
+
+      <div class="note-card purple">
+        <strong style="color:var(--purple)">世界模型的作用</strong><br>
+        行业最前沿的做法已经不再把世界模型看作独立组件，而是将其作为机器人的小脑/直觉中枢，与VLA大脑<strong>并行运作</strong>。当VLA接受指令准备伸手抓移动物体时，世界模型在后台以毫秒级速度进行下一状态预测——在脑海里推演0.1秒后物体位置、碰撞后果，实时纠偏。
+      </div>
+
+      <p>在这次调研中，明确将VLA/VTA与世界模型深度结合的企业表现出了恐怖的技术进步速度。比如高盛重点提到了<span class="highlight">星动纪元</span>这家公司，在2026年3月发布了一个叫FastWalem的模型。你知道他的延迟做到了多少吗？<span class="highlight">190毫秒</span>。190毫秒是什么概念？人类对视觉刺激的平均反应时间大概在200-250毫秒之间。也就是说这台机器人在物理世界的反应速度已经比你我还要快了。试想一下，在高速运转的工业流水线上，哪怕是半秒钟的卡顿都意味着浪费，190毫秒的超低延迟才是真正能干活的神经系统。</p>
+
+      <p>在里相灵擎智能，他们的开源模型SpiritV1.5在级绝含进量的Robo Challenge T-3上以66.09%、50.33%的成功率直接霸榜。关键是，这是中国开源具身模型历史上第一次把国外那个被吹上天的Pi0.5按在地上摩擦。</p>
+
+      <div class="stat-row">
+        <div class="stat-box">
+          <div class="label">模型参数量</div>
+          <div class="value" style="color:var(--cyan)">40B-80B</div>
+        </div>
+        <div class="stat-box">
+          <div class="label">反应延迟</div>
+          <div class="value" style="color:var(--pink)">190ms</div>
+        </div>
+        <div class="stat-box">
+          <div class="label">SpiritV1.5</div>
+          <div class="value" style="color:var(--green)">霸榜</div>
+        </div>
+      </div>
+
+      <p>而且高盛的调研团队还特别指出，为了容纳这套复杂的直觉与思考系统，现在具身智能大模型的参数量正在整齐划一地向<span class="highlight">400亿到800亿</span>这个量级迁移。为什么是这个区间？这是经过残酷的商业计算得出来的。参数量太小，比如几十亿，机器人的智商不够，容易变智障。参数量太大，比如上万亿，你的机器人脑袋里根本装不下那么大的芯片，除非你给他拉根网线永远连着云端服务器。但在工厂里，网络要是断了一秒钟，机器人失控把机器砸了算谁的？所以400亿到800亿就是一个完美的甜点位，既能保证有足够强大的VLA常识推理和世界模型预测能力，又刚好能塞进机器人本地的边缘计算芯片里，实现离线超低延迟的控制。</p>
+      <p>可以说，机器人的赛博朋克神经系统在2026年的五月已经彻底打通了任督二脉。</p>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- Section 3 -->
+  <div class="section-heading">
+    <span class="section-num">3</span>
+    钢铁巨兽、数据工厂与真实世界的暗战
+  </div>
+  <div class="card">
+    <div class="content">
+      <p>听到这里，你是不是觉得既然神经系统都搭好了，咱们马上就能看到满大街溜达的终结者了？慢着。如果你现在去问那些机器人公司的CEO，他们最大的焦虑是什么？绝对不是算法写不出来，也不是芯片不够快。他们会眼泪汪汪地告诉你两个字：<span class="highlight">数据</span>。高盛的调研把这一点看得透彻——高质量的真实世界数据依然是目前制约整个产业落地、卡住所有人命运咽喉的核心瓶颈。</p>
+      <p>你可能会说，这不扯吗？互联网上不是有海量的数据吗？维基百科、YouTube视频、几十亿张图片，还不够AI学习吗？这里面的认知差太大了。我跟你说，互联网上的那些数据用来训练ChatGPT这种纯文字的模型，或者训练Midjourney那种画图模型，那绝对是够了，因为那些模型活在2D的虚拟世界里。但是具身智能、人形机器人是要在3D的物理世界里干活的。互联网上难道有详细记录人手捏碎一个鸡蛋需要多少牛顿力度的数据吗？有记录100件真丝衬衫从洗衣机里掏出来阻力反馈是多少的数据吗？根本没有。</p>
+
+      <div class="note-card">
+        <strong style="color:var(--cyan)">互联网数据 vs 具身数据</strong><br>
+        互联网数据是扁平的，是视觉和文本的。而机器人需要的是包含<strong>空间坐标、力量反馈、触觉感知、物理定律</strong>的多模态具身数据。这种数据在人类历史上从来没有被大规模采集和存储过。
+      </div>
+
+      <p>所以现在的战局已经发生了微妙的转移。高盛发现行业里最顶尖的那些脑瓜子已经不在争夺算法和数据配方了，大家现在拼刺刀的地方是如何构建一个可扩展的数据采集架构。谁能用最低的成本、最快的速度把真实世界里的物理动作转化成0和1，谁就转化了新时代的石油。</p>
+      <p>现在最主流也是被证明最有效的共识是什么？叫<span class="highlight">"以人为中心、以自我视角为主的采集方式"</span>。啥意思呢？说白了就是让人亲自下场，手把手的教。最硬核的做法叫遥操作。你可以脑补一下那个画面：在一个巨大的厂房里，几十个带着VR眼镜、穿着动作捕捉服的人类操作员，就像《头号玩家》或者《阿凡达》里面一样，控制着远处的机器人去拿杯子、开门、拧螺丝。机器人的每一个传感器都在疯狂记录操作员在这一瞬间的视角画面、手部动作轨迹以及关节受力的参数。这就是最纯粹、最顶级的具身数据。</p>
+
+      <div class="key-finding">
+        <div class="kf-title" style="color:var(--orange)">数据工厂：新时代的流水线</div>
+        <div class="kf-body">
+          高盛在调研中特别提到了<strong>帕西尼</strong>这家公司。为了搞数据，这家公司已经在全国疯狂铺设了整整<strong>五座数据工厂</strong>。这已经不是在搞实验室科研了，这就是工业革命时期的流水线重现，只不过这次流水线上生产的不是衣服鞋帽，而是<strong>人类物理动作的数字化副本</strong>。
+        </div>
+      </div>
+
+      <p>除了遥操作，大家还在各显神通。星动纪元、灵擎智能、万机机器人这几家为了构建分布式的数据闭环，不仅在车间部署采集系统，还开发了可穿戴设备，甚至把采集端做到了客户端里。你买了设备回去用，你在使用过程中的每一次纠错，都在帮他源源不断地传回真实世界的数据。这套路像不像当年特斯拉用几百万车主免费帮他们跑自动驾驶路测数据？完全一样。</p>
+      <p>在这个维度上，高盛看到了极具想象力的商业空间。多家企业拍着胸脯预计到了2026年底，纯靠卖数据相关的营收占比就会显著攀升。而国内人形机器人的老大哥优必选更是直接放话：2026年政府主导的数据工厂需求绝对会与2025年持平甚至更强。</p>
+
+      <div class="highlight-bar purple">
+        你看懂这里的逻辑了吗？过去劳动力是用来生产商品的，现在人类劳动力正在被用来生产数据，然后再用这些数据去训练机器人，最终让机器人去取代劳动力生产商品。这是一个完美的、闭环的、带着一点点赛博朋克冷酷感的商业飞轮。
+      </div>
+
+      <p>而在几十万、上千万小时的高质量数据被硬生生干出来之前，所有的模型都只是一句空壳。这场数据暗战才是2026年机器人战场上看不见硝烟的斯大林格勒。</p>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- Section 4 -->
+  <div class="section-heading">
+    <span class="section-num">4</span>
+    浪漫与现实的博弈：为什么轮子比双腿更早赚钱
+  </div>
+  <div class="card">
+    <div class="content">
+      <p>了解完大脑和数据，接下来我们该聊聊肉体了。说实在的，我们每个人看科幻片长大，心里对机器人都有一个终极的浪漫幻想。我们希望他长得像阿诺·施瓦辛格那个T-800，或者是马斯克发布会上那个能跳舞的Optimus。我们潜意识里觉得只有长着两条腿、有一双和人类一模一样的五指灵巧手的，才叫真正的机器人。</p>
+      <p>但高盛这份报告像一盆冷水一样，把大家从科幻的梦境里泼醒，拉回了骨感的商业现实中。在五天的密集调研中，高盛观察到了一个让很多纯技术极客感到失望、但让投资人两眼放光的趋势：出于模型能力的约束，更出于现实的成本考量，现在绝大多数准备落地的玩家都在选择一种务实的形态——<span class="highlight">轮式底盘加上两到三指的抓手</span>。</p>
+
+      <div class="note-card pink">
+        <strong style="color:var(--pink)">为什么不是双足？</strong><br>
+        双足行走的平衡算法依然是消耗算力的黑洞，运维成本居高不下。真实工厂地面平整得能滑冰，根本没有那么多楼梯让你去爬。在绝大多数平坦的工业和商业场景下，<strong>轮子的移动效率、能耗比、稳定性都把双腿按在地上摩擦</strong>。
+      </div>
+
+      <p>你不觉得奇怪吗？为什么非得是轮子？既然叫人形机器人，没腿还玩个啥？这里的账咱们得好好算算。首先，双足行走的平衡算法依然是一个消耗算力的黑洞，而且运维成本居高不下。其实你去真实的工厂里看了就知道了，大部分现代化的无人工厂、物流仓库，地面平整得能滑冰，根本没有那么多楼梯让你去爬。在绝大多数平坦的工业和商业场景下，轮子的移动效率、能耗比、甚至稳定性都把双腿按在地上摩擦。</p>
+      <p>再来说手。五指灵巧手确实很酷，能做花，但在真实的工业搬运、物流分拣场景里，你需要做花吗？根本不需要。一个简单粗暴、开合有力的两指或三指夹爪，再加上VLA模型的视觉引导，已经足够覆盖70%到90%的工业应用场景。既然能用十分之一的成本解决80%的问题，立刻开始产生现金流，企业为什么非要死磕那个昂贵、良品率低的完美人型？</p>
+      <p>所以妥协是商业化落地的第一步。这并不意味着放弃双足和五指，很多公司明确表示依然是未来的终极演进方向，但现在——活下去，把东西卖出去才是王道。</p>
+      <p>现在这个节点到底能不能大规模出货了呢？高盛给出的答案是：不要急，子弹还要再飞一会儿。目前整个行业主要还是处于<span class="highlight">POC（概念验证）</span>阶段。这个词做生意的都很熟悉，说白了就是把机器拉到客户的工厂里跑两圈，给老板看看，证明你这东西是真能干活。高盛总结了一个典型的、也是痛苦的工业落地四步曲：</p>
+
+      <div class="data-card">
+        <div class="data-card-title">工业落地四步曲</div>
+        <ul>
+          <li><strong>第一步：POC验证</strong> — 通常要在客户的真实车间里磨上3-6个月，平均要经历两到三轮的反复修改和扯皮。因为工厂环境太复杂了，光照变化、粉尘、杂物的干扰都会让机器人发疯。</li>
+          <li><strong>第二步：小批量测试</strong> — POC过了，客户捏着鼻子下个单。这时候规模很小，通常订单低于50台。工厂老板也精了，先买几十台放在最不重要的边角料岗位，试坏了也不影响主线生产。</li>
+          <li><strong>第三步：长达12个月的验证期</strong> — 这个阶段要经历四季的温差变化，机器的机械磨损、电池的衰减，甚至工人的抵触情绪，全都要在这个周期里暴露出来并解决掉。</li>
+          <li><strong>第四步：逐步放量</strong> — 熬过这一年，设备稳定了，成本也降下来了，订单规模才会逐步向每客户50到100台迈进。</li>
+        </ul>
+      </div>
+
+      <div class="highlight-bar">
+        这就是为什么高盛在报告里反复强调：<strong style="color:var(--cyan)">"这一旅程仍需耐心，大规模的商业放量不可能在2026年发生。"</strong> 行业普遍的预期是，只有在积累了数千万小时的高质量数据、把部署就位的模型打磨到极致，并且硬件成本随规模效应大幅下降后，真正的大规模部署要等到<strong>2027年到2029年</strong>才会爆发。
+      </div>
+
+      <p>但如果你是一个嗅觉灵敏的投资者，你现在在想什么？你绝对不会等到2029年再去买股票。因为股票市场的是预期，当所有人都看到满大街的机器人的时候，这个赛道的暴利期就已经结束了。真正赚大钱的机会永远是在黎明前，在大家都还在苦熬POC、在产能即将迎来大爆发的前夜。</p>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- Section 5 -->
+  <div class="section-heading">
+    <span class="section-num">5</span>
+    核心产业链拆解：零部件巨头的"卖水"哲学
+  </div>
+  <div class="card">
+    <div class="content">
+      <p>这就到了咱们这期视频最核心、最干货，也可能是大家最关心的地方：这个即将引爆的万亿大风口，咱们到底该怎么下嘴？在淘金热的时候，最赚钱往往不是那些去挖金子的人，而是那些在路边卖铲子卖牛仔裤的人。机器人产业也是一样，在整机厂厮杀的血流成河、鹿死谁手还不明朗的时候，去投那些高壁垒的核心零部件，是确定性最高的"卖水"策略。</p>
+      <p>高盛的投资框架清晰：偏好内容价值高的产品。啥意思？就是这台机器人身上什么东西最难造、最值钱、别人最仿不出来，就投什么。这里面首当其冲的是<span class="highlight">谐波减速器</span>。兄弟们，这个东西绝对是机器人产业链皇冠上的明珠。你别听名字觉得像个拖拉机零件，我给你打个比方：如果说电机是机器人的肌肉，那减速器就是他的关节。电机转速快但力气小，必须通过减速器把转速降下来，把扭矩放大，同时还要保持变态的精度。</p>
+
+      <div class="key-finding">
+        <div class="kf-title" style="color:var(--cyan)">谐波减速器格局重塑</div>
+        <div class="kf-body">
+          传统老大是日本的<strong>哈默纳科</strong>，垄断了绝户几十年。但高盛看到了格局的巨变——看好中国的<strong>绿的谐波</strong>。直接把绿的谐波2025-2030年市场份额预测上调到<strong style="color:var(--cyan)">30%</strong>，哈默纳科维持70%。大胆预测到2030年之后，两家有望走向<strong>50%:50%</strong>平分天下。
+        </div>
+      </div>
+
+      <p>第二块肥肉是<span class="highlight">执行器总成</span>。高盛认为这里的技术采用确定性甚至比减速器更高。大家想一个问题：谁最有可能先把人形机器人造出来并且大规模量产？是车企。比如Tesla Optimus，比如国内一众造车新势力也在暗中布局。因为人形机器人的供应链跟新能源汽车的供应链重合度极高。所以那些已经在新能源车领域证明过自己能管理复杂供应链关系的汽车零部件巨头，转身做机器人执行器总成简直就是降维打击。</p>
+
+      <div class="stat-row">
+        <div class="stat-box">
+          <div class="label">三花智控</div>
+          <div class="value" style="color:var(--cyan)">70%</div>
+        </div>
+        <div class="stat-box">
+          <div class="label">拓普集团</div>
+          <div class="value" style="color:var(--purple)">30%</div>
+        </div>
+      </div>
+
+      <p>高盛在这里直接点名了两位大佬：<span class="highlight">三花智控</span>和<span class="highlight">拓普集团</span>。高盛机械的预测，这两家的市场份额分配将从原先的拓普领先调整为三花70%和拓普30%。凭什么三花能拿70%大头？就凭人家在Tesla一体式热管理模块总成领域已经建立起了全球主导地位。特斯拉要造机器人，第一反应绝对是找最熟悉、最靠谱的老伙计。</p>
+      <p>至于行星滚柱丝杠，目前德国舍弗勒占50%-60%，属于细分领域小赛道。高盛相对谨慎，认为技术路线图还在神圣打价阶段，良品率和产能都不确定，长期格局还看不清楚。投资嘛，要的就是确定性最高的那一段。</p>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- Section 6 -->
+  <div class="section-heading">
+    <span class="section-num">6</span>
+    资本市场的暗流：21%折价与资金轮动
+  </div>
+  <div class="card">
+    <div class="content">
+      <p>聊完具体的产品，我们再把视角拉高，看看资本市场的宏观流动。这才是高盛报告里最让人血脉喷张的发现。</p>
+      <p>现在你把亚洲的机器人工业自动化股票打包成一个篮子，把美国的同类企业也打包成一个篮子，咱们来比一比。均值市盈率大家差不多，都在29-30倍左右。但是如果你看中位数市盈率，<span class="highlight">亚太区只有22.0倍，而美国是28.0倍</span>。这意味着什么？这意味着亚洲这些真正有产能、有技术在疯狂内卷的机器人硬核玩家，相对美国同行正在被打上约<span class="highlight">21%的股价折扣</span>标签。</p>
+
+      <div class="stat-row">
+        <div class="stat-box">
+          <div class="label">亚太中位数PE</div>
+          <div class="value" style="color:var(--cyan)">22.0x</div>
+        </div>
+        <div class="stat-box">
+          <div class="label">美国中位数PE</div>
+          <div class="value" style="color:var(--pink)">28.0x</div>
+        </div>
+        <div class="stat-box">
+          <div class="label">折价幅度</div>
+          <div class="value" style="color:var(--orange)">21%</div>
+        </div>
+      </div>
+
+      <p>如果你再看P/E/G，亚太篮子的中位数P/E/G只有1.5倍，而美国是2.0倍。这说明你买亚洲的机器人股票，你花的每一分钱估值里面都蕴含着比美国公司高得多的未来盈利增长空间。比如像拓普集团、三花智控、恒立液压这些中端自动化公司，他们的预期增长率高得强悍，但在估值上却受了委屈。</p>
+
+      <div class="note-card green">
+        <strong style="color:var(--green)">聪明钱已经开始行动</strong><br>
+        共同基金已经悄悄开始行动了，资金正在明目张胆地从别的地方抽水，轮动到韩国和中国的汽车零部件、工业自动化及机器人工与领域。被动资金的再平衡已经展现出了威力——韩国市场资金正在疯狂流入<strong>现代摩比斯</strong>，同时从传统的现代汽车里流出。在中国市场，<strong>恒立液压</strong>和<strong>拓普集团</strong>这种中盘股正在成为流动性调整的最大受益者。
+      </div>
+
+      <div class="data-card">
+        <div class="data-card-title">亚太 vs 美国 估值对比</div>
+        <ul>
+          <li>均值市盈率：亚太 ≈ 美国（29-30倍）</li>
+          <li><strong>中位数市盈率：亚太 22.0倍 vs 美国 28.0倍（折价21%）</strong></li>
+          <li>中位数P/E/G：亚太 1.5倍 vs 美国 2.0倍</li>
+          <li>核心受益标的：拓普集团、三花智控、恒立液压、绿的谐波</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- Summary -->
+  <div class="section-heading">
+    <span class="section-num" style="background:linear-gradient(135deg,var(--pink),var(--orange));width:auto;padding:0 10px;">总结</span>
+    提前布局的早周期节点
+  </div>
+  <div class="card">
+    <div class="content">
+      <p>今天我们跟着高盛这趟历时5天、横跨两城、探访14家顶尖企业的调研之旅，可以说是把整个具身智能和人形机器人的底层逻辑从头到尾扒了个底朝天。我们看到了AI的叙事是如何因为现实世界的刚需，从算力基础设施狂暴地向应用层和物理世界切换的。我们明白了VLA模型和世界模型的深度融合是如何让冷冰冰的机器拥有了类似人类的直觉和190毫秒的超低延迟反应。我们也揭开了数据工厂的神秘面纱，看到了人类是如何以一种略带魔幻色彩的方式充当着机器人的动作教练。我们更认清了商业现实，明白了为什么在浪漫的双足人形大规模普及之前，轮子加机械手才是当下能赚到真金白银的务实之选。</p>
+      <p>最重要的是，我们循着高盛的指引，在一堆高壁垒的核心零部件中找到了诸如绿的谐波、三花智控这样的定海神针，并且发现了亚太资本市场那个高达21%的巨大估值套利空间。</p>
+
+      <div class="note-card pink">
+        <strong style="color:var(--pink)">⚠ 预期差风险</strong><br>
+        市场普遍幻想2027年人形机器人能卖出<strong>50万台</strong>，这种狂热预期已提前反映在高达40倍的远期市盈率里。但高盛经严密推算后认为，2027年全球出货量可能只有<strong style="color:var(--pink)">7.6万台</strong>，要达到50.2万台可能得等到<strong style="color:var(--pink)">2032年</strong>。这中间的巨大预期差就是风险所在。
+      </div>
+
+      <p>如果你买入一家公司，它的估值是由核心业务价值加上人形机器人期权价值构成的，那么如果2027年出货量不及预期，这部分的期权价值是有可能在一瞬间归零的。到时候没有坚实基本面支撑的重概念股，股价会摔得很惨。</p>
+      <p>但反过来想，这也正是目前投资那些卖铲子的零部件巨头的优势之处。像拓普、三花、恒立液压这些公司，人家就算不搞机器人，自己原本的新能源汽车和工程机械主业也活得滋润，有充足的利润兜底。机器人对他们来说是锦上添花的免费彩票，而不是孤注一掷的赌博。</p>
+
+      <div class="key-finding" style="border:1px solid rgba(0,229,255,0.3);">
+        <div class="kf-title" style="color:var(--cyan)">高盛结语</div>
+        <div class="kf-body">
+          <strong>"随着结构性需求加速，亚洲相对欧美在估值上仍据明显折价，但增长动能更强。这是一个在多年资本全面进入机器人生态系统之前，提前布局的早周期节点。"</strong>
+        </div>
+      </div>
+
+      <p>你看，这个世界就是这样，悲观者往往正确，但只有乐观者才能赚到大钱。那我们今天就先聊到这吧，我是向阳，咱们下期视频再见，拜拜。</p>
+    </div>
+  </div>
+
+  <!-- Disclaimer -->
+  <div class="disclaimer">
+    <strong>免责声明：</strong>本文字稿由AI语音识别自动生成，可能存在识别错误，仅供参考。视频中涉及的投资观点和建议仅为UP主个人解读，不构成任何投资建议。投资有风险，入市需谨慎。如需准确信息，请观看原视频或查阅高盛原始报告。
+  </div>
+
+  <div class="footer-note">
+    本文字稿由AI语音识别技术提取生成 | 原视频来源于Bilibili<br>
+    生成时间：2026-05-31
+  </div>
+
+</div>
+
+<!-- Scroll Top -->
+<button class="scroll-top" id="scrollTop" onclick="window.scrollTo({top:0,behavior:'smooth'})">&#8593;</button>
+
+<!-- Bottom Nav -->
+<div class="nav-bar">
+  <button class="nav-btn active" onclick="window.scrollTo({top:0,behavior:'smooth'})">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+    顶部
+  </button>
+  <button class="nav-btn" onclick="document.querySelectorAll('.section-heading')[1].scrollIntoView({behavior:'smooth'})">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+    逻辑
+  </button>
+  <button class="nav-btn" onclick="document.querySelectorAll('.section-heading')[3].scrollIntoView({behavior:'smooth'})">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+    产业
+  </button>
+  <button class="nav-btn" onclick="document.querySelectorAll('.section-heading')[6].scrollIntoView({behavior:'smooth'})">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg>
+    资本
+  </button>
+  <button class="nav-btn" onclick="document.querySelectorAll('.section-heading')[7].scrollIntoView({behavior:'smooth'})">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+    总结
+  </button>
+</div>
+
+<script>
+// ===== Particle Background =====
+const canvas = document.createElement('canvas');
+canvas.id = 'particle-canvas';
+document.getElementById('particles').appendChild(canvas);
+const ctx = canvas.getContext('2d');
+
+let W, H;
+function resize() {
+  W = canvas.width = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+}
+resize();
+window.addEventListener('resize', resize);
+
+const PARTICLES = 60;
+const particles = [];
+for (let i = 0; i < PARTICLES; i++) {
+  particles.push({
+    x: Math.random() * W,
+    y: Math.random() * H,
+    vx: (Math.random() - 0.5) * 0.3,
+    vy: (Math.random() - 0.5) * 0.3,
+    r: Math.random() * 1.5 + 0.5,
+    color: Math.random() > 0.5 ? 'rgba(0,229,255,' : 'rgba(179,71,230,'
+  });
+}
+
+function drawParticles() {
+  ctx.clearRect(0, 0, W, H);
+  for (let i = 0; i < PARTICLES; i++) {
+    const p = particles[i];
+    p.x += p.vx;
+    p.y += p.vy;
+    if (p.x < 0 || p.x > W) p.vx *= -1;
+    if (p.y < 0 || p.y > H) p.vy *= -1;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+    ctx.fillStyle = p.color + (Math.random() * 0.3 + 0.1) + ')';
+    ctx.fill();
+  }
+  for (let i = 0; i < PARTICLES; i++) {
+    for (let j = i + 1; j < PARTICLES; j++) {
+      const dx = particles[i].x - particles[j].x;
+      const dy = particles[i].y - particles[j].y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < 120) {
+        ctx.beginPath();
+        ctx.moveTo(particles[i].x, particles[i].y);
+        ctx.lineTo(particles[j].x, particles[j].y);
+        ctx.strokeStyle = 'rgba(120,100,220,' + (0.08 * (1 - dist / 120)) + ')';
+        ctx.lineWidth = 0.5;
+        ctx.stroke();
+      }
+    }
+  }
+  requestAnimationFrame(drawParticles);
+}
+drawParticles();
+
+// ===== Scroll Top Button =====
+const scrollTopBtn = document.getElementById('scrollTop');
+window.addEventListener('scroll', () => {
+  if (window.scrollY > 400) {
+    scrollTopBtn.classList.add('visible');
+  } else {
+    scrollTopBtn.classList.remove('visible');
+  }
+});
+</script>
+
+</body>
+</html>

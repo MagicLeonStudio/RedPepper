@@ -25,6 +25,18 @@ class TradeLogService:
     def delete(self, log_id: int) -> None:
         self.client.delete(f"{self.base_path}/{log_id}")
 
+    def update(self, log_id: int, data: dict) -> dict:
+        payload = self._to_api_payload(data)
+        item = self.client.put(f"{self.base_path}/{log_id}", json=payload)
+        return self._normalize_item(item)
+
+    def batch_delete(self, log_ids: list[int]) -> int:
+        deleted = 0
+        for log_id in log_ids:
+            self.delete(log_id)
+            deleted += 1
+        return deleted
+
     def ocr_image(self, image_base64: str) -> dict:
         return self.client.post(f"{self.base_path}/ocr", json={"image_base64": image_base64})
 
@@ -41,6 +53,9 @@ class TradeLogService:
     def import_from_csv(self, file_path: str) -> dict:
         return self.client.post(f"{self.base_path}/import-csv", json={"file_path": file_path})
 
+    def import_from_agi2rich_html(self, file_path: str) -> dict:
+        return self.client.post(f"{self.base_path}/import-agi2rich-html", json={"file_path": file_path})
+
     # ---- Aliases for frontend page compatibility ----
 
     def get_trade_logs(self) -> list:
@@ -53,7 +68,10 @@ class TradeLogService:
 
     def _normalize_item(self, item: dict) -> dict:
         normalized = dict(item)
-        normalized["target"] = normalized.get("name", "") or normalized.get("code", "")
+        name = str(normalized.get("name", "") or "").strip()
+        code = str(normalized.get("code", "") or "").strip()
+        normalized["target"] = name or code
+        normalized["code"] = code
         return normalized
 
     def _to_api_payload(self, data: dict) -> dict:

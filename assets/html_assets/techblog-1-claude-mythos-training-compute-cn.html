@@ -1,0 +1,1325 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Claude Mythos 级模型 · 训练算力与成本分析</title>
+<style>
+  :root {
+    --bg: #050510;
+    --bg2: #0a0a20;
+    --card: rgba(18,18,38,0.72);
+    --card2: rgba(22,22,48,0.55);
+    --text: #e0e0f0;
+    --text2: #8a8ab0;
+    --text3: #6a6a90;
+    --pink: #ff2d78;
+    --cyan: #00e5ff;
+    --purple: #b347e6;
+    --accent: var(--cyan);
+    --border: rgba(120,100,220,0.25);
+    --glow: 0 0 20px rgba(0,229,255,0.15);
+    --glow-pink: 0 0 20px rgba(255,45,120,0.15);
+    --glow-purple: 0 0 20px rgba(179,71,230,0.15);
+    --green: #2cb67d;
+    --orange: #ff9f43;
+    --yellow: #ffd700;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.7;
+    min-height: 100vh;
+    overflow-x: hidden;
+    padding-bottom: 80px;
+    font-size: 15px;
+  }
+  #particles {
+    position: fixed; top:0; left:0; width:100%; height:100%; z-index:0; pointer-events:none;
+  }
+  .container {
+    position: relative; z-index: 1; max-width: 580px; margin: 0 auto; padding: 16px;
+  }
+
+  /* ===== Topbar ===== */
+  .topbar {
+    position: sticky; top: 0; z-index: 50;
+    background: rgba(5,5,16,0.85);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border-bottom: 1px solid var(--border);
+    margin: -16px -16px 20px;
+    padding: 12px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .topbar .title {
+    font-size: 17px;
+    font-weight: 700;
+    background: linear-gradient(90deg, var(--cyan), var(--purple));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .topbar .badge {
+    font-size: 11px;
+    color: var(--text2);
+    background: var(--card2);
+    padding: 4px 10px;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+  }
+
+  /* ===== Hero Section ===== */
+  .hero {
+    text-align: center;
+    padding: 20px 0 24px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 24px;
+  }
+  .hero h1 {
+    font-size: 22px;
+    font-weight: 700;
+    line-height: 1.4;
+    background: linear-gradient(135deg, var(--cyan), var(--purple), var(--pink));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: 10px;
+  }
+  .hero .subtitle {
+    font-size: 13px;
+    color: var(--text2);
+    line-height: 1.6;
+  }
+  .hero .meta {
+    font-size: 12px;
+    color: var(--text3);
+    margin-top: 12px;
+    display: flex;
+    justify-content: center;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  .hero .meta span {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  /* ===== Cards ===== */
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 18px;
+    margin-bottom: 16px;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    transition: border-color 0.3s;
+  }
+  .card:hover {
+    border-color: rgba(120,100,220,0.4);
+  }
+  .card-title {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 14px;
+    font-size: 15px;
+    font-weight: 600;
+  }
+  .card-title span:first-child { color: var(--text); }
+
+  /* ===== Tags ===== */
+  .tag {
+    font-size: 11px;
+    padding: 3px 8px;
+    border-radius: 8px;
+    background: rgba(0,229,255,0.12);
+    color: var(--cyan);
+    border: 1px solid rgba(0,229,255,0.25);
+    white-space: nowrap;
+  }
+  .tag.pink {
+    background: rgba(255,45,120,0.12); color: var(--pink);
+    border-color: rgba(255,45,120,0.25);
+  }
+  .tag.purple {
+    background: rgba(179,71,230,0.12); color: var(--purple);
+    border-color: rgba(179,71,230,0.25);
+  }
+  .tag.green {
+    background: rgba(44,182,125,0.12); color: var(--green);
+    border-color: rgba(44,182,125,0.25);
+  }
+  .tag.orange {
+    background: rgba(255,159,67,0.12); color: var(--orange);
+    border-color: rgba(255,159,67,0.25);
+  }
+
+  /* ===== Note Cards ===== */
+  .note-card {
+    background: rgba(0,229,255,0.06);
+    border: 1px solid rgba(0,229,255,0.15);
+    border-radius: 12px;
+    padding: 12px 14px;
+    font-size: 13px;
+    color: var(--text2);
+    line-height: 1.7;
+    margin-bottom: 12px;
+  }
+  .note-card.pink {
+    background: rgba(255,45,120,0.06);
+    border-color: rgba(255,45,120,0.15);
+  }
+  .note-card.purple {
+    background: rgba(179,71,230,0.06);
+    border-color: rgba(179,71,230,0.15);
+  }
+  .note-card.green {
+    background: rgba(44,182,125,0.06);
+    border-color: rgba(44,182,125,0.15);
+  }
+
+  /* ===== Section Headers ===== */
+  .section-num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    background: linear-gradient(135deg, var(--cyan), var(--purple));
+    color: #fff;
+    font-size: 13px;
+    font-weight: 700;
+    margin-right: 10px;
+    flex-shrink: 0;
+  }
+  .section-heading {
+    display: flex;
+    align-items: center;
+    font-size: 16px;
+    font-weight: 700;
+    margin-bottom: 14px;
+    color: var(--text);
+  }
+
+  /* ===== Text Content ===== */
+  .content p {
+    margin-bottom: 12px;
+    color: var(--text2);
+    font-size: 14px;
+    line-height: 1.8;
+  }
+  .content p.lead {
+    color: var(--text);
+    font-size: 15px;
+  }
+  .content strong {
+    color: var(--text);
+    font-weight: 600;
+  }
+  .content a {
+    color: var(--cyan);
+    text-decoration: none;
+    border-bottom: 1px solid rgba(0,229,255,0.3);
+  }
+  .content a:hover {
+    border-bottom-color: var(--cyan);
+  }
+
+  /* ===== Formula Block ===== */
+  .formula {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px;
+    margin: 14px 0;
+    font-family: "SF Mono", "Fira Code", "Cascadia Code", monospace;
+    font-size: 13px;
+    color: var(--text);
+    line-height: 2;
+    overflow-x: auto;
+  }
+  .formula .comment {
+    color: var(--text3);
+    font-style: italic;
+  }
+  .formula .highlight {
+    color: var(--cyan);
+    font-weight: 600;
+  }
+  .formula .highlight-pink {
+    color: var(--pink);
+    font-weight: 600;
+  }
+
+  /* ===== Data Grid ===== */
+  .data-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin: 14px 0;
+  }
+  .data-grid.three-col {
+    grid-template-columns: 1fr 1fr 1fr;
+  }
+  .data-cell {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 10px;
+    text-align: center;
+  }
+  .data-cell .label {
+    font-size: 11px;
+    color: var(--text2);
+    margin-bottom: 6px;
+  }
+  .data-cell .value {
+    font-size: 16px;
+    font-weight: 700;
+  }
+
+  /* ===== Tables ===== */
+  .data-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 14px 0;
+    font-size: 13px;
+  }
+  .data-table th {
+    background: var(--bg2);
+    padding: 10px 8px;
+    text-align: center;
+    font-weight: 600;
+    color: var(--text);
+    border: 1px solid var(--border);
+    font-size: 12px;
+  }
+  .data-table td {
+    padding: 10px 8px;
+    text-align: center;
+    border: 1px solid var(--border);
+    color: var(--text2);
+  }
+  .data-table tr:nth-child(even) td {
+    background: rgba(10,10,32,0.4);
+  }
+  .data-table .highlight-row td {
+    background: rgba(0,229,255,0.06) !important;
+    color: var(--cyan);
+    font-weight: 600;
+  }
+
+  /* ===== Bullet Lists ===== */
+  .bullets {
+    list-style: none;
+    padding: 0;
+    margin: 12px 0;
+  }
+  .bullets li {
+    position: relative;
+    padding-left: 18px;
+    margin-bottom: 10px;
+    color: var(--text2);
+    font-size: 14px;
+    line-height: 1.7;
+  }
+  .bullets li::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 9px;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--cyan), var(--purple));
+  }
+  .bullets li strong { color: var(--text); }
+
+  /* ===== Highlight Bar ===== */
+  .highlight-bar {
+    border-left: 3px solid var(--cyan);
+    padding-left: 14px;
+    margin: 14px 0;
+    color: var(--text2);
+    font-size: 14px;
+    line-height: 1.7;
+  }
+  .highlight-bar.pink { border-left-color: var(--pink); }
+  .highlight-bar.purple { border-left-color: var(--purple); }
+  .highlight-bar.green { border-left-color: var(--green); }
+
+  /* ===== Key Finding Card ===== */
+  .key-finding {
+    background: linear-gradient(135deg, rgba(0,229,255,0.08), rgba(179,71,230,0.08));
+    border: 1px solid rgba(0,229,255,0.2);
+    border-radius: 14px;
+    padding: 18px;
+    margin: 16px 0;
+  }
+  .key-finding .kf-title {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--cyan);
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .key-finding .kf-body {
+    font-size: 14px;
+    color: var(--text2);
+    line-height: 1.7;
+  }
+  .key-finding .kf-body strong { color: var(--text); }
+
+  /* ===== Divider ===== */
+  .divider {
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--border), transparent);
+    margin: 24px 0;
+  }
+
+  /* ===== Stat Row ===== */
+  .stat-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    margin: 14px 0;
+  }
+  .stat-box {
+    flex: 1;
+    text-align: center;
+    padding: 14px 6px;
+    background: var(--card2);
+    border-radius: 12px;
+    border: 1px solid var(--border);
+  }
+  .stat-box .label {
+    font-size: 11px;
+    color: var(--text2);
+    margin-bottom: 6px;
+    white-space: nowrap;
+  }
+  .stat-box .value {
+    font-size: 16px;
+    font-weight: 700;
+  }
+
+  /* ===== GPU Tag ===== */
+  .gpu-tag {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    background: rgba(0,229,255,0.1);
+    color: var(--cyan);
+    border: 1px solid rgba(0,229,255,0.2);
+    margin: 0 2px;
+  }
+  .gpu-tag.pink {
+    background: rgba(255,45,120,0.1);
+    color: var(--pink);
+    border-color: rgba(255,45,120,0.2);
+  }
+
+  /* ===== Price Tag ===== */
+  .price {
+    font-family: "SF Mono", "Fira Code", monospace;
+    font-weight: 700;
+  }
+  .price.cyan { color: var(--cyan); }
+  .price.pink { color: var(--pink); }
+  .price.green { color: var(--green); }
+  .price.purple { color: var(--purple); }
+
+  /* ===== Quote Block ===== */
+  .quote-block {
+    background: var(--bg2);
+    border-left: 3px solid var(--purple);
+    border-radius: 0 10px 10px 0;
+    padding: 14px 16px;
+    margin: 14px 0;
+    font-size: 13px;
+    color: var(--text3);
+    line-height: 1.7;
+    font-style: italic;
+  }
+
+  /* ===== Bottom Nav ===== */
+  .nav-bar {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 100;
+    background: rgba(5,5,16,0.92);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-top: 1px solid var(--border);
+    display: flex;
+    justify-content: space-around;
+    padding: 8px 0 calc(8px + env(safe-area-inset-bottom));
+  }
+  .nav-btn {
+    background: none;
+    border: none;
+    color: var(--text2);
+    font-size: 10px;
+    padding: 4px 6px;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    transition: all 0.2s;
+    text-decoration: none;
+  }
+  .nav-btn.active { color: var(--cyan); }
+
+  /* ===== Scroll Top Button ===== */
+  .scroll-top {
+    position: fixed;
+    bottom: 70px;
+    right: 16px;
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    background: var(--card);
+    border: 1px solid var(--border);
+    color: var(--cyan);
+    font-size: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: 99;
+    backdrop-filter: blur(10px);
+    transition: all 0.3s;
+    opacity: 0;
+    pointer-events: none;
+  }
+  .scroll-top.visible {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .scroll-top:hover {
+    border-color: var(--cyan);
+    box-shadow: var(--glow);
+  }
+
+  /* ===== Summary Card ===== */
+  .summary-card {
+    background: linear-gradient(135deg, rgba(0,229,255,0.06), rgba(255,45,120,0.06));
+    border: 1px solid rgba(0,229,255,0.2);
+    border-radius: 16px;
+    padding: 20px;
+    margin: 20px 0;
+  }
+  .summary-card h3 {
+    font-size: 16px;
+    background: linear-gradient(90deg, var(--cyan), var(--pink));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: 14px;
+  }
+
+  /* ===== Responsive ===== */
+  @media (max-width: 480px) {
+    .data-grid.three-col { grid-template-columns: 1fr 1fr; }
+    .data-table { font-size: 11px; }
+    .data-table th, .data-table td { padding: 8px 4px; }
+    .hero h1 { font-size: 19px; }
+  }
+</style>
+</head>
+<body>
+<div id="particles"></div>
+
+<div class="container">
+
+  <!-- Topbar -->
+  <div class="topbar">
+    <div class="title">AGI2Rich · 深度翻译</div>
+    <div class="badge">技术长文</div>
+  </div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <h1>Claude Mythos 级模型<br>训练算力与成本深度分析</h1>
+    <p class="subtitle">基于 NVIDIA Blackwell GPU，对 2T / 4T / 10T 总参数规模的下一代前沿 MoE 模型进行基础设施需求估算</p>
+    <div class="meta">
+      <span>原文 Polymath707</span>
+      <span>2026-04-09</span>
+      <span>算力架构</span>
+    </div>
+  </div>
+
+  <!-- Introduction -->
+  <div class="card">
+    <div class="content">
+      <p class="lead">说 Claude Mythos 令人惊艳，那是轻描淡写了。它代表着能力上的一次阶跃式飞跃，正如 Dario 所说——<strong>上限不存在</strong>。</p>
+      <p>我们想要搞清楚，训练下一代参数级别在 <strong>2T、4T 和 10T</strong> 的模型，究竟需要多少算力和数据（各种传闻！）。话说回来，Elon 今天刚宣布他们正在训练这个级别的模型，所以这项分析来得正是时候。</p>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- Methodology -->
+  <div class="section-heading">
+    <span class="section-num"></span>
+    方法论
+  </div>
+  <div class="card">
+    <div class="content">
+      <p>我们使用估算 DeepSeek V3、ARCEE、KIMI 2.5 等模型训练成本时的公式与方法。GPU 性能数据取自 NVIDIA B200/B300 及 NVL72 机架的官方数据手册，数据可用性统计则来自 Epoch AI。</p>
+      <p>当我们提到 B200/B300 时，实际上指的是作为 NVL72 机架组成部分的 <strong>GB200/GB300 超级芯片</strong>。NVL72 的世界规模为 72 颗 GPU，这让训练这种级别的模型变得更加容易——因为这 72 颗 GPU 可以通过 NVLink/NVSwitch 高速互联，互相访问 HBM。</p>
+      <div class="note-card pink">
+        <strong style="color:var(--pink)">并行策略 caveat</strong><br>
+        仅做数据并行远远不够，你仍然需要其他并行策略（流水线并行、张量并行、序列并行）。为了计入所有瓶颈，我们假设 <strong>MFU（模型浮点利用率）仅为 20%</strong>。
+      </div>
+    </div>
+  </div>
+
+  <!-- Section 1: Assumptions -->
+  <div class="section-heading">
+    <span class="section-num">1</span>
+    假设条件
+  </div>
+  <div class="card">
+    <div class="card-title">
+      <span>模型规模假设</span>
+      <span class="tag">MoE</span>
+    </div>
+    <div class="data-table-wrapper" style="overflow-x:auto;">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>总参数量 N<sub>total</sub></th>
+            <th>2T</th>
+            <th>4T</th>
+            <th>10T</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>激活参数量 (5% 稀疏度)</strong></td>
+            <td><span class="price cyan">100B</span></td>
+            <td><span class="price cyan">200B</span></td>
+            <td><span class="price cyan">500B</span></td>
+          </tr>
+          <tr>
+            <td><strong>Token 数量</strong></td>
+            <td><span class="price purple">80T</span></td>
+            <td><span class="price purple">160T</span></td>
+            <td><span class="price purple">400T</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="note-card" style="margin-top:12px">
+      每个 Token 仅需计算激活参数。所有专家权重必须在完整训练轮次中得到训练，即使每个 Token 只激活 5%。
+    </div>
+  </div>
+
+  <!-- Section 2: Training Data -->
+  <div class="section-heading">
+    <span class="section-num">2</span>
+    训练数据需求
+  </div>
+  <div class="card">
+    <div class="card-title">
+      <span>数据量公式</span>
+      <span class="tag purple">Epoch AI</span>
+    </div>
+    <div class="formula">
+      D = tokens_per_parameter &times; N<sub>total</sub><br>
+      <span class="highlight">D = 40 &times; N<sub>total</sub></span>
+    </div>
+    <p style="font-size:13px;color:var(--text2);margin-bottom:12px;">Token 数量基于总参数量——所有专家权重必须在完整训练过程中得到训练，即使每个 Token 只激活 5%。</p>
+
+    <div class="stat-row">
+      <div class="stat-box">
+        <div class="label">公开互联网可用数据</div>
+        <div class="value" style="color:var(--cyan)">~100T</div>
+      </div>
+      <div class="stat-box">
+        <div class="label">10T 模型所需数据</div>
+        <div class="value" style="color:var(--pink)">400T</div>
+      </div>
+      <div class="stat-box">
+        <div class="label">缺口 (需合成)</div>
+        <div class="value" style="color:var(--orange)">300T</div>
+      </div>
+    </div>
+
+    <div class="highlight-bar pink">
+      需要更多数据的模型必须依赖<strong>合成数据生成、改写重写、或多轮 epoch 训练</strong>。如后文所示，当我们逼近 10T 参数级别时，合成数据生成的成本将变得极其高昂。
+    </div>
+  </div>
+
+  <!-- Section 3: Sparsity Ratios -->
+  <div class="section-heading">
+    <span class="section-num">3</span>
+    前沿 MoE 模型的稀疏率
+  </div>
+  <div class="card">
+    <div class="card-title">
+      <span>为什么 5% 是合理假设</span>
+      <span class="tag green">已验证</span>
+    </div>
+    <ul class="bullets">
+      <li><strong>DeepSeek V3/V3.2 (5.4%)</strong>、<strong>GLM-5 (5.4%)</strong> 和 <strong>MiniMax M2.5 (4.3%)</strong> 全部集中在 4%-6% 区间。5% 是这一范围的中心点。</li>
+      <li><strong>Kimi K2.5 已达到 3.1%</strong>——趋势是走向更高稀疏度。对下一代模型来说，5% 是保守估计。</li>
+      <li>较老的模型（Mixtral、DBRX）使用了约 <strong>27%</strong> 的激活比例。短短 18 个月内，行业迁移到了 3%-6%，这是一个决定性的转变。</li>
+      <li>DeepSeek V3 以 5.5% 激活比例在 <strong>14.8T Token</strong> 上成功完成训练，与稠密基线模型相比没有质量损失。</li>
+      <li>5% 激活比例产生实用的模型尺寸：<strong>2T&rarr;100B</strong>、<strong>4T&rarr;200B</strong>、<strong>10T&rarr;500B</strong> 每 Token 激活量——都是已验证的架构规模。</li>
+    </ul>
+  </div>
+
+  <!-- Section 4: Training Compute -->
+  <div class="section-heading">
+    <span class="section-num">4</span>
+    训练计算量 (FLOPs)
+  </div>
+  <div class="card">
+    <div class="card-title">
+      <span>计算量推导</span>
+      <span class="tag">公式</span>
+    </div>
+    <p style="font-size:14px;color:var(--text2);margin-bottom:10px;">使用 MoE 时，每 Token 只计算激活参数：</p>
+    <div class="formula">
+      N<sub>active</sub> = N<sub>total</sub> &times; 0.05<br>
+      C = 6 &times; N<sub>active</sub> &times; D<br>
+      C = 6 &times; (N<sub>total</sub> &times; 0.05) &times; (40 &times; N<sub>total</sub>)<br>
+      <span class="highlight">C = 12 &times; N<sub>total</sub>&sup2;</span>
+    </div>
+    <div class="note-card green">
+      最终简化为极其优雅的公式：<strong style="color:var(--green)">C = 12 &times; N<sub>total</sub>&sup2;</strong>，即训练计算量与总参数量的平方成正比，系数为 12。
+    </div>
+  </div>
+
+  <!-- Section 5: GPU Specs -->
+  <div class="section-heading">
+    <span class="section-num">5</span>
+    GPU 规格
+  </div>
+  <div class="card">
+    <div class="card-title">
+      <span>Blackwell 架构性能对比</span>
+      <span class="tag purple">NVIDIA</span>
+    </div>
+    <div class="data-table-wrapper" style="overflow-x:auto;">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>GPU</th>
+            <th>FP4 峰值算力</th>
+            <th>BF16 峰值算力</th>
+            <th>每小时成本</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="gpu-tag">B200</span></td>
+            <td><span class="price cyan">4.5 PF</span></td>
+            <td><span class="price cyan">2.25 PF</span></td>
+            <td><span class="price green">$5</span></td>
+          </tr>
+          <tr class="highlight-row">
+            <td><span class="gpu-tag pink">B300</span></td>
+            <td><span class="price pink">5.4 PF</span></td>
+            <td><span class="price cyan">2.25 PF</span></td>
+            <td><span class="price green">$6</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="note-card pink" style="margin-top:12px">
+      <strong style="color:var(--pink)">关键洞察：</strong>B300 仅在 FP4 精度下优于 B200（高出 20%）。在 BF16 下，两者性能完全相同（2.25 PFLOPS），但 B300 贵了 20%。NVIDIA 将 B300 定位为推理卡而非训练卡。
+    </div>
+  </div>
+
+  <!-- Section 6: Calculation Chain -->
+  <div class="section-heading">
+    <span class="section-num">6</span>
+    计算链
+  </div>
+  <div class="card">
+    <div class="card-title">
+      <span>六步推导流程</span>
+      <span class="tag">90 天训练窗口</span>
+    </div>
+    <div class="formula">
+      <span class="comment">// 假设训练窗口为 90 天</span><br>
+      Step 1: <span class="highlight">Effective_FLOPS</span> = Peak_FLOPS &times; 0.20<br>
+      Step 2: <span class="highlight">GPU_seconds</span> = C &div; Effective_FLOPS<br>
+      Step 3: <span class="highlight">GPU_hours</span> = GPU_seconds &div; 3,600<br>
+      Step 4: <span class="highlight">GPUs_needed</span> = GPU_hours &div; 2,160 (= 90天 &times; 24小时)<br>
+      Step 5: <span class="highlight">NVL72_Racks</span> = GPUs_needed &div; 72<br>
+      Step 6: <span class="highlight-pink">Total_Cost</span> = GPU_hours &times; $/GPU/hr
+    </div>
+  </div>
+
+  <!-- Section 7: FP4 Scenario -->
+  <div class="section-heading">
+    <span class="section-num">7</span>
+    FP4 场景
+  </div>
+  <div class="card">
+    <div class="card-title">
+      <span>理论最优：全部 FLOP 以 FP4 吞吐量执行</span>
+      <span class="tag green">理论值</span>
+    </div>
+    <div class="note-card pink">
+      <strong style="color:var(--pink)">⚠ 当前不可行</strong><br>
+      据我所知，目前在这个规模下尚不可能，或者说尚未被证明可行。NVIDIA 在 12B 这样更小的模型上做过 4-bit 精度训练，但即使在那里，他们仍然将许多组件保持在更高精度。
+    </div>
+
+    <div class="quote-block">
+      "Attention、embedding、非线性层和其他张量：为确保训练期间数值稳定性，embedding、输出投影头、归一化层、非线性激活层以及 attention 组件（包括 softmax 和 query-key / attention score-value 批处理 GEMM）均保留原始精度（如 BF16 或 FP32）。主权重（由优化器存储）、权重梯度（用于跨微批次和跨数据并行副本的梯度累积）和优化器状态也保持在 FP32。张量并行规约以 BF16 精度执行。"
+    </div>
+
+    <div class="card-title" style="margin-top:16px;">
+      <span>B200 (FP4) — $5/GPU/hr</span>
+      <span class="gpu-tag">4.5 PF</span>
+    </div>
+    <div class="data-table-wrapper" style="overflow-x:auto;">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>指标</th>
+            <th>2T 模型</th>
+            <th>4T 模型</th>
+            <th>10T 模型</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td><strong>计算量 C</strong></td><td>4.8&times;10<sup>25</sup></td><td>1.92&times;10<sup>26</sup></td><td>1.2&times;10<sup>27</sup></td></tr>
+          <tr><td><strong>有效算力</strong></td><td>0.9 PF</td><td>0.9 PF</td><td>0.9 PF</td></tr>
+          <tr><td><strong>GPU 小时</strong></td><td>1.48&times;10<sup>7</sup></td><td>5.93&times;10<sup>7</sup></td><td>3.70&times;10<sup>8</sup></td></tr>
+          <tr><td><strong>所需 GPU</strong></td><td>6,853</td><td>27,454</td><td>171,582</td></tr>
+          <tr><td><strong>NVL72 机架</strong></td><td><span class="price cyan">96</span></td><td><span class="price cyan">382</span></td><td><span class="price cyan">2,383</span></td></tr>
+          <tr class="highlight-row"><td><strong>总成本</strong></td><td><span class="price pink">$74M</span></td><td><span class="price pink">$297M</span></td><td><span class="price pink">$1.85B</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card-title" style="margin-top:16px;">
+      <span>B300 (FP4) — $6/GPU/hr</span>
+      <span class="gpu-tag pink">5.4 PF</span>
+    </div>
+    <div class="data-table-wrapper" style="overflow-x:auto;">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>指标</th>
+            <th>2T 模型</th>
+            <th>4T 模型</th>
+            <th>10T 模型</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td><strong>计算量 C</strong></td><td>4.8&times;10<sup>25</sup></td><td>1.92&times;10<sup>26</sup></td><td>1.2&times;10<sup>27</sup></td></tr>
+          <tr><td><strong>有效算力</strong></td><td>1.08 PF</td><td>1.08 PF</td><td>1.08 PF</td></tr>
+          <tr><td><strong>GPU 小时</strong></td><td>1.24&times;10<sup>7</sup></td><td>4.94&times;10<sup>7</sup></td><td>3.09&times;10<sup>8</sup></td></tr>
+          <tr><td><strong>所需 GPU</strong></td><td>5,711</td><td>22,879</td><td>142,985</td></tr>
+          <tr><td><strong>NVL72 机架</strong></td><td><span class="price cyan">80</span></td><td><span class="price cyan">318</span></td><td><span class="price cyan">1,986</span></td></tr>
+          <tr class="highlight-row"><td><strong>总成本</strong></td><td><span class="price pink">$74M</span></td><td><span class="price pink">$296M</span></td><td><span class="price pink">$1.85B</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="note-card" style="margin-top:12px">
+      B300 FP4 场景有趣的是：虽然需要更少的机架，但更高的每小时成本几乎完全抵消了效率优势，最终总成本与 B200 持平。
+    </div>
+  </div>
+
+  <!-- Section 8: BF16 Scenario -->
+  <div class="section-heading">
+    <span class="section-num">8</span>
+    BF16 场景
+  </div>
+  <div class="card">
+    <div class="card-title">
+      <span>更现实的场景：全部以 BF16 精度训练</span>
+      <span class="tag orange">推荐</span>
+    </div>
+    <div class="card-title" style="margin-top:0;">
+      <span>B200 (BF16) — $5/GPU/hr</span>
+      <span class="gpu-tag">2.25 PF</span>
+    </div>
+    <div class="data-table-wrapper" style="overflow-x:auto;">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>指标</th>
+            <th>2T 模型</th>
+            <th>4T 模型</th>
+            <th>10T 模型</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td><strong>计算量 C</strong></td><td>4.8&times;10<sup>25</sup></td><td>1.92&times;10<sup>26</sup></td><td>1.2&times;10<sup>27</sup></td></tr>
+          <tr><td><strong>有效算力</strong></td><td>0.45 PF</td><td>0.45 PF</td><td>0.45 PF</td></tr>
+          <tr><td><strong>GPU 小时</strong></td><td>2.96&times;10<sup>7</sup></td><td>1.19&times;10<sup>8</sup></td><td>7.41&times;10<sup>8</sup></td></tr>
+          <tr><td><strong>所需 GPU</strong></td><td>13,706</td><td>54,907</td><td>343,165</td></tr>
+          <tr><td><strong>NVL72 机架</strong></td><td><span class="price cyan">191</span></td><td><span class="price cyan">763</span></td><td><span class="price cyan">4,766</span></td></tr>
+          <tr class="highlight-row"><td><strong>总成本</strong></td><td><span class="price pink">$148M</span></td><td><span class="price pink">$593M</span></td><td><span class="price pink">$3.7B</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card-title" style="margin-top:16px;">
+      <span>B300 (BF16) — $6/GPU/hr</span>
+      <span class="gpu-tag pink">2.25 PF</span>
+    </div>
+    <div class="data-table-wrapper" style="overflow-x:auto;">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>指标</th>
+            <th>2T 模型</th>
+            <th>4T 模型</th>
+            <th>10T 模型</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td><strong>计算量 C</strong></td><td>4.8&times;10<sup>25</sup></td><td>1.92&times;10<sup>26</sup></td><td>1.2&times;10<sup>27</sup></td></tr>
+          <tr><td><strong>有效算力</strong></td><td>0.45 PF</td><td>0.45 PF</td><td>0.45 PF</td></tr>
+          <tr><td><strong>GPU 小时</strong></td><td>2.96&times;10<sup>7</sup></td><td>1.19&times;10<sup>8</sup></td><td>7.41&times;10<sup>8</sup></td></tr>
+          <tr><td><strong>所需 GPU</strong></td><td>13,706</td><td>54,907</td><td>343,165</td></tr>
+          <tr><td><strong>NVL72 机架</strong></td><td><span class="price cyan">191</span></td><td><span class="price cyan">763</span></td><td><span class="price cyan">4,766</span></td></tr>
+          <tr class="highlight-row"><td><strong>总成本</strong></td><td><span class="price pink">$178M</span></td><td><span class="price pink">$712M</span></td><td><span class="price pink">$4.45B</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="note-card pink" style="margin-top:12px">
+      <strong style="color:var(--pink)">B300 BF16 完全不值得：</strong>性能与 B200 完全相同，但贵了 20%。BF16 场景下 B300 的总成本比 B200 高出整整 <strong>$750M</strong>（10T 模型），这就是 NVIDIA 把 B300 定位为推理卡的原因。
+    </div>
+  </div>
+
+  <!-- Section 9: Cost Comparison -->
+  <div class="section-heading">
+    <span class="section-num">9</span>
+    成本对比总结
+  </div>
+  <div class="card">
+    <div class="card-title">
+      <span>总训练成本 ($M)</span>
+      <span class="tag pink">百万美元</span>
+    </div>
+    <div class="data-table-wrapper" style="overflow-x:auto;">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>精度 / GPU</th>
+            <th>2T</th>
+            <th>4T</th>
+            <th>10T</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="gpu-tag">B200 FP4</span></td>
+            <td><span class="price cyan">$74M</span></td>
+            <td><span class="price cyan">$297M</span></td>
+            <td><span class="price pink">$1.85B</span></td>
+          </tr>
+          <tr>
+            <td><span class="gpu-tag pink">B300 FP4</span></td>
+            <td><span class="price cyan">$74M</span></td>
+            <td><span class="price cyan">$296M</span></td>
+            <td><span class="price pink">$1.85B</span></td>
+          </tr>
+          <tr class="highlight-row">
+            <td><span class="gpu-tag">B200 BF16</span></td>
+            <td><span class="price cyan">$148M</span></td>
+            <td><span class="price cyan">$593M</span></td>
+            <td><span class="price pink">$3.7B</span></td>
+          </tr>
+          <tr>
+            <td><span class="gpu-tag pink">B300 BF16</span></td>
+            <td><span class="price cyan">$178M</span></td>
+            <td><span class="price cyan">$712M</span></td>
+            <td><span class="price pink">$4.45B</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card-title" style="margin-top:18px;">
+      <span>所需 NVL72 机架数</span>
+      <span class="tag purple">机架</span>
+    </div>
+    <div class="data-table-wrapper" style="overflow-x:auto;">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>精度 / GPU</th>
+            <th>2T</th>
+            <th>4T</th>
+            <th>10T</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="gpu-tag">B200 FP4</span></td>
+            <td><span class="price cyan">96</span></td>
+            <td><span class="price cyan">382</span></td>
+            <td><span class="price pink">2,383</span></td>
+          </tr>
+          <tr>
+            <td><span class="gpu-tag pink">B300 FP4</span></td>
+            <td><span class="price cyan">80</span></td>
+            <td><span class="price cyan">318</span></td>
+            <td><span class="price pink">1,986</span></td>
+          </tr>
+          <tr class="highlight-row">
+            <td><span class="gpu-tag">B200 BF16</span></td>
+            <td><span class="price cyan">191</span></td>
+            <td><span class="price cyan">763</span></td>
+            <td><span class="price pink">4,766</span></td>
+          </tr>
+          <tr>
+            <td><span class="gpu-tag pink">B300 BF16</span></td>
+            <td><span class="price cyan">191</span></td>
+            <td><span class="price cyan">763</span></td>
+            <td><span class="price pink">4,766</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Section 11: Synthetic Data -->
+  <div class="section-heading">
+    <span class="section-num">11</span>
+    合成数据生成成本
+  </div>
+  <div class="card">
+    <div class="card-title">
+      <span>10T 模型的数据缺口</span>
+      <span class="tag orange">成本大头</span>
+    </div>
+    <div class="content">
+      <p>10T 模型需要 <strong>400T Token</strong>，但互联网公开可用数据仅约 <strong>100T</strong>。剩余的 <strong>300T</strong> 必须通过合成方式生成。我们以 Claude Sonnet 4.6 作为代表性前沿 API 模型来分析生成成本。</p>
+    </div>
+    <div class="card-title" style="margin-top:10px;">
+      <span>Sonnet 4.6 定价</span>
+    </div>
+    <div class="data-grid">
+      <div class="data-cell">
+        <div class="label">标准模式 · 输入</div>
+        <div class="value" style="color:var(--cyan)">$3 / 1M</div>
+      </div>
+      <div class="data-cell">
+        <div class="label">标准模式 · 输出</div>
+        <div class="value" style="color:var(--pink)">$15 / 1M</div>
+      </div>
+      <div class="data-cell">
+        <div class="label">批处理 · 输入</div>
+        <div class="value" style="color:var(--green)">$1.50 / 1M</div>
+      </div>
+      <div class="data-cell">
+        <div class="label">批处理 · 输出</div>
+        <div class="value" style="color:var(--purple)">$7.50 / 1M</div>
+      </div>
+    </div>
+
+    <div class="card-title" style="margin-top:16px;">
+      <span>生成 300T 合成 Token 的成本</span>
+    </div>
+    <div class="note-card">
+      假设输入输出比为 <strong>1:10</strong>（30T prompt token &rarr; 300T 生成 token）
+    </div>
+    <div class="formula">
+      <span class="comment">// 标准定价</span><br>
+      (30T &div; 1M &times; $3) + (300T &div; 1M &times; $15)<br>
+      = $90M + $4,500M<br>
+      = <span class="highlight-pink">$4.6B</span><br><br>
+      <span class="comment">// 批处理定价（5折）</span><br>
+      (30T &div; 1M &times; $1.50) + (300T &div; 1M &times; $7.50)<br>
+      = $45M + $2,250M<br>
+      = <span class="highlight-pink">$2.3B</span>
+    </div>
+    <div class="note-card purple" style="margin-top:8px">
+      当然，对于 Anthropic 自己来说，成本会比外部用户低得多——毕竟他们不用给自己付利润差价 :)
+    </div>
+  </div>
+
+  <!-- Section 12: Total Cost -->
+  <div class="section-heading">
+    <span class="section-num">12</span>
+    总成本：训练 + 合成数据 (10T 级别)
+  </div>
+  <div class="card">
+    <div class="card-title">
+      <span>全栈成本拆解</span>
+      <span class="tag pink">10T 模型</span>
+    </div>
+    <div class="data-table-wrapper" style="overflow-x:auto;">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>成本项</th>
+            <th>B200 BF16</th>
+            <th>+ API 合成</th>
+            <th>+ 自研合成</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>训练成本</strong></td>
+            <td><span class="price cyan">$3.7B</span></td>
+            <td><span class="price cyan">$3.7B</span></td>
+            <td><span class="price cyan">$3.7B</span></td>
+          </tr>
+          <tr>
+            <td><strong>合成数据 (300T)</strong></td>
+            <td>—</td>
+            <td><span class="price pink">$2.3B</span></td>
+            <td><span class="price green">~$75M</span></td>
+          </tr>
+          <tr class="highlight-row">
+            <td><strong>总计</strong></td>
+            <td><span class="price cyan">$3.7B</span></td>
+            <td><span class="price pink">$6.0B</span></td>
+            <td><span class="price green">$3.775B</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="key-finding" style="margin-top:14px;">
+      <div class="kf-title">合成数据 = 隐性第二笔训练费</div>
+      <div class="kf-body">
+        按 API 定价，300T Token 通过 Sonnet 4.6 生成的成本为 <strong>$2.3B</strong>——几乎是 10T 级别模型在 B200 BF16 上 <strong>$3.7B</strong> 训练成本的 60%。自研部署 cheaper 模型进行生成可能成为这个规模下的必需选择。
+      </div>
+    </div>
+  </div>
+
+  <!-- Hybrid Approach -->
+  <div class="card">
+    <div class="card-title">
+      <span>混合方案：更务实的路径</span>
+      <span class="tag green">推荐</span>
+    </div>
+    <div class="content">
+      <p>不用全部 400T 都走合成——采用更聪明的混合策略：</p>
+    </div>
+    <div class="stat-row">
+      <div class="stat-box">
+        <div class="label">互联网真实数据</div>
+        <div class="value" style="color:var(--cyan)">100T</div>
+      </div>
+      <div class="stat-box">
+        <div class="label">高质量合成</div>
+        <div class="value" style="color:var(--purple)">50T</div>
+      </div>
+      <div class="stat-box">
+        <div class="label">多轮 epoch</div>
+        <div class="value" style="color:var(--green)">3轮</div>
+      </div>
+    </div>
+    <div class="note-card green" style="margin-top:10px;">
+      <strong style="color:var(--green)">100T 互联网 + 50T 高质量合成 + 3 epoch</strong> &asymp; <strong>400T 等效 Token</strong>，以极小的生成成本达成目标。
+    </div>
+  </div>
+
+  <!-- Post Training -->
+  <div class="section-heading">
+    <span class="section-num">+</span>
+    后训练呢？
+  </div>
+  <div class="card">
+    <div class="card-title">
+      <span>Pre-training 只是开始</span>
+      <span class="tag purple">SFT + RL</span>
+    </div>
+    <div class="content">
+      <p>前文主要聚焦于预训练和合成数据生成成本。<strong>后训练（SFT + RL）</strong>可能额外增加约 <strong>20%</strong> 的成本（参考 Epoch AI 对 DeepSeek R1 的分析）。</p>
+      <p>xAI 曾报告，他们在 Grok 4 的后训练上花费的计算量几乎与预训练相当。</p>
+    </div>
+    <div class="data-grid" style="margin-top:12px;">
+      <div class="data-cell">
+        <div class="label">预训练 (BF16)</div>
+        <div class="value" style="color:var(--cyan)">$3.7B</div>
+      </div>
+      <div class="data-cell">
+        <div class="label">后训练 (+20%)</div>
+        <div class="value" style="color:var(--pink)">+$740M</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- Key Findings -->
+  <div class="section-heading">
+    <span class="section-num" style="background:linear-gradient(135deg,var(--pink),var(--orange));width:auto;padding:0 10px;">核心结论</span>
+  </div>
+
+  <div class="summary-card">
+    <h3>本次思想实验的关键发现</h3>
+
+    <div class="key-finding">
+      <div class="kf-title" style="color:var(--green)">2T 级别：完全可行</div>
+      <div class="kf-body">
+        <strong>191</strong> 台 NVL72 机架，BF16 下 <strong>$148M</strong>。NeoLabs 这样的初创公司仍能承担。数据需求（80T）在现有互联网数据范围内。
+      </div>
+    </div>
+
+    <div class="key-finding">
+      <div class="kf-title" style="color:var(--cyan)">4T 级别：可行但开始昂贵</div>
+      <div class="kf-body">
+        <strong>762</strong> 台机架，BF16 下 <strong>$593M</strong>。需要约 <strong>60T</strong> 合成 Token 才能达到 160T 总量——可管理，但开始变得极其昂贵。
+      </div>
+    </div>
+
+    <div class="key-finding">
+      <div class="kf-title" style="color:var(--pink)">10T 级别：超大规模玩家的游戏</div>
+      <div class="kf-body">
+        <strong>4,763</strong> 台机架，BF16 下 <strong>$3.7B</strong>。但 300T 合成 Token 额外增加 <strong>$2.3B</strong>（API 定价）或约 <strong>$75M</strong>（自研廉价模型）。
+      </div>
+    </div>
+
+    <div class="divider" style="margin:16px 0;"></div>
+
+    <div class="key-finding" style="border:1px solid rgba(255,45,120,0.3);border-radius:10px;padding:14px;margin:0;">
+      <div class="kf-title" style="color:var(--orange)">四大核心洞察</div>
+      <div class="kf-body">
+        <ul class="bullets" style="margin-top:8px;">
+          <li><strong style="color:var(--pink)">合成数据可能与训练同价：</strong>按 API 定价，300T Token 经 Sonnet 4.6 生成花费 $2.3B——相当于 10T 级别模型 B200 BF16 训练成本 $3.7B 的近 60%。自研部署 cheaper 模型进行生成可能成为必需。</li>
+          <li><strong style="color:var(--cyan)">B300 仅在 FP4 下胜出：</strong>BF16 下吞吐量与 B200 相同但更贵 20%。据我所知，NVIDIA 将 B300 定位为推理卡，而非训练卡。</li>
+          <li><strong style="color:var(--purple)">数据才是主要瓶颈：</strong>不是算力或 GPU  alone——10T 模型的 400T Token 需求可能是最难满足的约束条件！！！！</li>
+          <li><strong style="color:var(--green)">稀疏度趋势利好：</strong>行业从 27% 激活率（Mixtral 时代）快速下降到 3-6%，让万亿参数模型的每 Token 激活量保持在已验证的架构规模内。</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- Disclaimer -->
+  <div class="card" style="border-color:rgba(255,45,120,0.3);">
+    <div class="card-title">
+      <span>免责声明</span>
+      <span class="tag pink">重要</span>
+    </div>
+    <div class="content">
+      <p style="margin-bottom:0;">这只是一次思想实验，用于讨论下一代模型所需算力的数量级。所有计算均基于公开可用的公式和性能数据。感谢阅读！</p>
+    </div>
+  </div>
+
+  <!-- Source -->
+  <div class="note-card" style="text-align:center;margin-top:8px;margin-bottom:24px;">
+    原文：<a href="https://polymath707.substack.com/p/claude-mythos-class-training-compute" target="_blank" style="color:var(--cyan)">polymath707.substack.com</a> · 翻译整理：AGI2Rich
+  </div>
+
+</div>
+
+<!-- Scroll Top -->
+<button class="scroll-top" id="scrollTop" onclick="window.scrollTo({top:0,behavior:'smooth'})">&#8593;</button>
+
+<!-- Bottom Nav -->
+<div class="nav-bar">
+  <a href="#" class="nav-btn active" onclick="window.scrollTo({top:0,behavior:'smooth'});return false;">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+    顶部
+  </a>
+  <a href="#" class="nav-btn" onclick="document.querySelector('.section-heading:nth-of-type(5)').scrollIntoView({behavior:'smooth'});return false;">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+    GPU
+  </a>
+  <a href="#" class="nav-btn" onclick="document.querySelectorAll('.section-heading')[7].scrollIntoView({behavior:'smooth'});return false;">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg>
+    成本
+  </a>
+  <a href="#" class="nav-btn" onclick="document.querySelector('.summary-card').scrollIntoView({behavior:'smooth'});return false;">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+    结论
+  </a>
+</div>
+
+<script>
+// ===== Particle Background =====
+const canvas = document.createElement('canvas');
+canvas.id = 'particle-canvas';
+document.getElementById('particles').appendChild(canvas);
+const ctx = canvas.getContext('2d');
+
+let W, H;
+function resize() {
+  W = canvas.width = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+}
+resize();
+window.addEventListener('resize', resize);
+
+const PARTICLES = 60;
+const particles = [];
+for (let i = 0; i < PARTICLES; i++) {
+  particles.push({
+    x: Math.random() * W,
+    y: Math.random() * H,
+    vx: (Math.random() - 0.5) * 0.3,
+    vy: (Math.random() - 0.5) * 0.3,
+    r: Math.random() * 1.5 + 0.5,
+    color: Math.random() > 0.5 ? 'rgba(0,229,255,' : 'rgba(179,71,230,'
+  });
+}
+
+function drawParticles() {
+  ctx.clearRect(0, 0, W, H);
+  for (let i = 0; i < PARTICLES; i++) {
+    const p = particles[i];
+    p.x += p.vx;
+    p.y += p.vy;
+    if (p.x < 0 || p.x > W) p.vx *= -1;
+    if (p.y < 0 || p.y > H) p.vy *= -1;
+
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+    ctx.fillStyle = p.color + (Math.random() * 0.3 + 0.1) + ')';
+    ctx.fill();
+  }
+
+  // Draw connections
+  for (let i = 0; i < PARTICLES; i++) {
+    for (let j = i + 1; j < PARTICLES; j++) {
+      const dx = particles[i].x - particles[j].x;
+      const dy = particles[i].y - particles[j].y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < 120) {
+        ctx.beginPath();
+        ctx.moveTo(particles[i].x, particles[i].y);
+        ctx.lineTo(particles[j].x, particles[j].y);
+        ctx.strokeStyle = 'rgba(120,100,220,' + (0.08 * (1 - dist / 120)) + ')';
+        ctx.lineWidth = 0.5;
+        ctx.stroke();
+      }
+    }
+  }
+  requestAnimationFrame(drawParticles);
+}
+drawParticles();
+
+// ===== Scroll Top Button =====
+const scrollTopBtn = document.getElementById('scrollTop');
+window.addEventListener('scroll', () => {
+  if (window.scrollY > 400) {
+    scrollTopBtn.classList.add('visible');
+  } else {
+    scrollTopBtn.classList.remove('visible');
+  }
+});
+</script>
+
+</body>
+</html>

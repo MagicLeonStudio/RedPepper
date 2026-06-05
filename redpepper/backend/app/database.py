@@ -92,6 +92,7 @@ def init_db() -> None:
     Base.metadata.create_all(bind=engine)
     _migrate_watchlist_group_columns()
     _migrate_portfolio_status_and_group_columns()
+    _migrate_knowledge_html_columns()
 
 
 def _migrate_watchlist_group_columns() -> None:
@@ -127,3 +128,19 @@ def _migrate_portfolio_status_and_group_columns() -> None:
             if col_name in existing:
                 continue
             conn.execute(text(f"ALTER TABLE portfolio ADD COLUMN {col_name} {col_type}"))
+
+
+def _migrate_knowledge_html_columns() -> None:
+    """Ensure knowledge html rendering columns exist for legacy SQLite databases."""
+    required_columns = {
+        "content_html": "TEXT",
+        "content_base_dir": "TEXT",
+    }
+
+    with engine.begin() as conn:
+        rows = conn.execute(text("PRAGMA table_info(knowledge)")).fetchall()
+        existing = {str(row[1]) for row in rows}
+        for col_name, col_type in required_columns.items():
+            if col_name in existing:
+                continue
+            conn.execute(text(f"ALTER TABLE knowledge ADD COLUMN {col_name} {col_type}"))

@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-v0.0.4-red" alt="Version v0.0.4">
+  <img src="https://img.shields.io/badge/Version-v0.0.5-red" alt="Version v0.0.5">
   <img src="https://img.shields.io/badge/Python-3.10%2B-purple" alt="Python 3.10+">
   <img src="https://img.shields.io/badge/License-MIT-yellow" alt="MIT License">
   <img src="https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-cyan" alt="Platform">
@@ -28,7 +28,7 @@
   - [Phase 2 — 智能增强（进行中）](#phase-2--智能增强进行中)
   - [Phase 3 — 知识深化（规划中）](#phase-3--知识深化规划中)
   - [Phase 4 — 手机版预研（规划中）](#phase-4--手机版预研规划中)
-  - [当前版本进度快照（v0.0.4）](#当前版本进度快照v004)
+  - [当前版本进度快照（v0.0.5）](#当前版本进度快照v005)
 - [开发日志 / Changelog](#开发日志--changelog)
 - [技术架构 / Tech Stack](#技术架构--tech-stack)
 - [快速开始 / Quick Start](#快速开始--quick-start)
@@ -48,7 +48,7 @@
 
 ## 项目简介 / Project Overview
 
-**当前版本：v0.0.4**
+**当前版本：v0.0.5**
 
 RedPepper（红椒）是一款面向 A 股个人投资者的本地桌面应用，聚焦“数据沉淀 + AI 辅助 + 本地安全”。
 
@@ -138,7 +138,7 @@ RedPepper（红椒）是一款面向 A 股个人投资者的本地桌面应用�
 - [x] 持仓与观察池同代码关联同步（导入后自动关联）
 - [ ] 投资简报生成（自动化任务链路待完善）
 - [ ] 投资日记（AI 深度复盘能力待完善）
-- [ ] AGIRich-Notebook HTML 导入（解析增强）
+- [x] AGI2Rich-Notebook HTML 导入（解析增强）
 
 ### Phase 3 — 知识深化（规划中） / Knowledge Deepening
 
@@ -156,16 +156,41 @@ RedPepper（红椒）是一款面向 A 股个人投资者的本地桌面应用�
 - [ ] 移动端技术方案评估（React Native / Flutter / PWA）
 - [ ] 与桌面端数据与权限模型对齐方案
 
-### 当前版本进度快照（v0.0.4）
+### 当前版本进度快照（v0.0.5）
 
-- 已完成：Phase 1 全量收口，Phase 2 核心能力已可用（导入、关联、双模型）
-- 进行中：Phase 2 深化（简报/日记自动化、HTML 深度导入、稳定性回归）
+- 已完成：Phase 1 全量收口，Phase 2 关键数据链路可用（导入、关联、双模型、日志/简报/日记基础能力）
+- 新增：知识库 AGI2Rich HTML 导入增强（多文件 + images 目录 + 自动标签 + 内嵌预览 + 本地浏览器预览 + 批量删除）
+- 进行中：Phase 2 深化（简报/日记自动化、稳定性回归、可用性打磨）
 - 规划中：Phase 3 知识深化、Phase 4 手机版预研
-- 下一里程碑：v0.0.5 聚焦 Phase 2 深化与 Phase 3 启动准备
+- 下一里程碑：v0.0.6 聚焦 Phase 2 自动化补齐与 Phase 3 知识能力扩展
 
 ---
 
 ## 开发日志 / Changelog
+
+### v0.0.5 (2026-06-05)
+
+本版本重点是“AGI2Rich 全链路导入扩展 + 知识库渲染体验修复 + 文档与版本收口”。
+
+**交易/简报/日记导入增强**
+- 交易日志支持 AGI2Rich HTML 导入，补充代码关联、导入进度与结果统计
+- 市场简报支持 AGI2Rich HTML 导入（简报/事件/持仓影响信息）
+- 投资日记支持 AGI2Rich HTML 导入，并统一中英文文案
+
+**知识库能力升级**
+- 新增知识库 HTML 批量导入（支持多文件）
+- 支持 images 图片目录解析，尽可能保留原文资源引用
+- 根据文档内容自动打标签（analysis/tech/product/finance/robotics/general）
+- 新增内嵌预览、预览缩放、单删与批量删除
+- 新增“本地浏览器预览”按钮，直接调用系统浏览器渲染原始 HTML，规避内嵌渲染兼容差异
+
+**稳定性与兼容修复**
+- 补充知识库历史数据兼容：缺失 content_html 时可从原始 URL 回读 HTML
+- 优化 Windows 下 Qt 插件路径引导，降低 PyQt/Qt 环境混装导致的启动失败概率
+
+**工程与文档**
+- 完善 README 的 HTML 导入说明与版本快照
+- 同步版本至 v0.0.5，并准备发布标记
 
 ### v0.0.4 (2026-06-04)
 
@@ -359,15 +384,36 @@ stock_code,stock_name,cost_price,quantity,account_name
 
 ### HTML 导入
 
-适用于：券商网页版交割单/对账单导出文件（Phase 2）
+适用于：AGI2Rich-Notebook 导出的研究文章 HTML（analysis / techblog / product 等）
 
-目前支持的券商格式：
+已支持能力：
 
-| 券商 | 导出路径 | 支持状态 |
-|------|---------|---------|
-| 华泰证券 | 交易查询 → 交割单导出 | 计划中 |
-| 东方财富 | 账户 → 对账单导出 | 计划中 |
-| 同花顺 | 交易 → 历史成交导出 | 计划中 |
+- 支持一次选择多个 HTML 文件批量导入
+- 支持额外选择 images 图片目录（可选），用于还原文档中的本地图片资源
+- 导入后自动按文档内容打标签（如 analysis / tech / product / finance / robotics）
+- 知识库页面内嵌原文渲染（右侧预览区），尽量保留原始 CSS/布局与视觉效果
+- 支持单条删除与批量删除
+- 支持本地浏览器预览（原始 HTML 渲染）
+
+导入步骤：
+
+1. 进入「知识库」页面，点击「导入 HTML」
+2. 在文件框中多选 `.html/.htm` 文件
+3. 若文档引用本地图片，按提示选择 `images` 目录（可选）
+4. 导入完成后，在左侧列表选择条目，右侧查看内嵌渲染效果
+
+推荐目录结构：
+
+```text
+assets/
+  html_assets/
+    analysis-1-xxx.html
+    analysis-2-xxx.html
+    product-1-xxx.html
+    images/
+      xxx.png
+      yyy.jpg
+```
 
 ---
 
