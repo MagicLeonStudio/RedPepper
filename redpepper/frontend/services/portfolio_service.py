@@ -56,6 +56,10 @@ class PortfolioService:
     def delete(self, portfolio_id: int) -> None:
         self.client.delete(f"{self.base_path}/{portfolio_id}")
 
+    def batch_delete(self, ids: list[int]) -> dict:
+        payload = {"ids": [int(v) for v in (ids or [])]}
+        return self.client.post(f"{self.base_path}/batch-delete", json=payload)
+
     def ocr_image(self, image_base64: str) -> dict:
         return self.client.post(f"{self.base_path}/ocr", json={"image_base64": image_base64})
 
@@ -69,7 +73,7 @@ class PortfolioService:
         self,
         file_path: str,
         progress_callback: Callable[[dict], None] | None = None,
-    ) -> list[dict]:
+    ) -> dict:
         # Backward-compatible path: run the full pipeline without manual confirmation.
         extraction = self.extract_csv_from_screenshot(file_path, progress_callback=progress_callback)
         csv_text = str(extraction.get("csv_text", "") if isinstance(extraction, dict) else "")
@@ -117,7 +121,7 @@ class PortfolioService:
         self,
         csv_text: str,
         progress_callback: Callable[[dict], None] | None = None,
-    ) -> list[dict]:
+    ) -> dict:
         csv_content = str(csv_text or "").strip()
         if not csv_content:
             raise ValueError("CSV text is empty")
@@ -147,9 +151,10 @@ class PortfolioService:
                 }
             )
 
-        created_items = self.import_from_extracted_items(items)
-
-        return created_items
+        import_result = self.import_from_extracted_items(items)
+        if not isinstance(import_result, dict):
+            return {"created": 0, "updated": 0, "deleted": 0, "errors": ["Invalid import result"]}
+        return import_result
 
     def import_from_csv(self, file_path: str) -> dict:
         return self._post_with_retry(f"{self.base_path}/import-csv", {"file_path": file_path})
@@ -168,20 +173,22 @@ class PortfolioService:
         self,
         items: list[dict],
         progress_callback: Callable[[dict], None] | None = None,
-    ) -> list[dict]:
+    ) -> dict:
         result = self._post_with_retry(
             f"{self.base_path}/import-items",
             {"items": list(items or [])},
             progress_callback=progress_callback,
             timeout_stage="importing",
         )
-        created = int(result.get("created", 0) if isinstance(result, dict) else 0)
+        if not isinstance(result, dict):
+            raise RuntimeError("Invalid import response")
+        valid = int(result.get("valid", 0) or 0)
         errors = list(result.get("errors", []) if isinstance(result, dict) else [])
-        if created <= 0:
+        if valid <= 0:
             if errors:
                 raise RuntimeError(errors[0])
             raise RuntimeError("No valid holdings were imported (likely missing code/name).")
-        return [dict(item) for item in items[:created]]
+        return result
 
     def _post_with_retry(
         self,

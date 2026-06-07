@@ -21,6 +21,7 @@ from PyQt6.QtWidgets import (
     QFileDialog,
     QProgressDialog,
     QApplication,
+    QDialog,
 )
 from PyQt6.QtCore import Qt, QDate
 from PyQt6.QtGui import QFont
@@ -162,6 +163,38 @@ class BriefingPage(QWidget):
         btn_refresh.clicked.connect(self._load_data)
         top_bar.addWidget(btn_refresh)
 
+        btn_manual = QPushButton("📝 " + tr("briefing.manual_record"))
+        btn_manual.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {BRAND_RED};
+                color: #FFFFFF;
+                border: none;
+                border-radius: 8px;
+                padding: 8px 14px;
+                font-size: 12px;
+                font-weight: bold;
+            }}
+            QPushButton:hover {{ background-color: #F37A90; }}
+        """)
+        btn_manual.clicked.connect(self._open_manual_record_dialog)
+        top_bar.addWidget(btn_manual)
+
+        btn_event = QPushButton("➕ " + tr("briefing.add_event"))
+        btn_event.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {ACCENT_PURPLE};
+                color: #FFFFFF;
+                border: none;
+                border-radius: 8px;
+                padding: 8px 14px;
+                font-size: 12px;
+                font-weight: bold;
+            }}
+            QPushButton:hover {{ background-color: #A78BFA; }}
+        """)
+        btn_event.clicked.connect(self._open_add_event_dialog)
+        top_bar.addWidget(btn_event)
+
         top_bar.addStretch()
         layout.addLayout(top_bar)
 
@@ -257,107 +290,7 @@ class BriefingPage(QWidget):
 
         right_layout.addWidget(detail_box)
 
-        entry_box = QGroupBox(tr("briefing.manual_record"))
-        entry_box.setStyleSheet(GROUPBOX_STYLE)
-        entry_layout = QFormLayout(entry_box)
-        entry_layout.setSpacing(8)
-
-        self.entry_date = QDateEdit()
-        self.entry_date.setCalendarPopup(True)
-        self.entry_date.setDate(QDate.currentDate())
-        self.entry_date.setDisplayFormat("yyyy-MM-dd")
-        entry_layout.addRow(tr("briefing.date") + ":", self.entry_date)
-
-        self.entry_title = QLineEdit()
-        self.entry_title.setPlaceholderText(tr("briefing.title_placeholder"))
-        entry_layout.addRow(tr("briefing.title_col") + ":", self.entry_title)
-
-        self.entry_overseas = QTextEdit()
-        self.entry_overseas.setPlaceholderText(tr("briefing.overseas_placeholder"))
-        self.entry_overseas.setMaximumHeight(70)
-        entry_layout.addRow(tr("briefing.overseas") + ":", self.entry_overseas)
-
-        self.entry_domestic = QTextEdit()
-        self.entry_domestic.setPlaceholderText(tr("briefing.domestic_placeholder"))
-        self.entry_domestic.setMaximumHeight(70)
-        entry_layout.addRow(tr("briefing.domestic") + ":", self.entry_domestic)
-
-        self.entry_market = QTextEdit()
-        self.entry_market.setPlaceholderText(tr("briefing.market_placeholder"))
-        self.entry_market.setMaximumHeight(70)
-        entry_layout.addRow(tr("briefing.market") + ":", self.entry_market)
-
-        self.entry_summary = QTextEdit()
-        self.entry_summary.setPlaceholderText(tr("briefing.summary_placeholder"))
-        self.entry_summary.setMaximumHeight(70)
-        entry_layout.addRow(tr("briefing.summary") + ":", self.entry_summary)
-
-        btn_save = QPushButton("💾 " + tr("common.save"))
-        btn_save.setStyleSheet(f"""
-            QPushButton {{
-                background-color: {BRAND_RED};
-                color: #FFFFFF;
-                border: none;
-                border-radius: 8px;
-                padding: 10px 20px;
-                font-size: 13px;
-                font-weight: bold;
-            }}
-            QPushButton:hover {{ background-color: #F37A90; }}
-        """)
-        btn_save.clicked.connect(self._on_save_briefing)
-        entry_layout.addRow(btn_save)
-
-        right_layout.addWidget(entry_box)
-
-        event_box = QGroupBox(tr("briefing.event_calendar"))
-        event_box.setStyleSheet(GROUPBOX_STYLE)
-        event_layout = QVBoxLayout(event_box)
-
-        self.event_list = QListWidget()
-        self.event_list.setStyleSheet(f"""
-            QListWidget {{
-                background-color: {BG_DARK};
-                color: {TEXT_PRIMARY};
-                border: 1px solid {BORDER_COLOR};
-                border-radius: 6px;
-                padding: 4px;
-            }}
-            QListWidget::item {{
-                padding: 6px;
-                border-bottom: 1px solid {BORDER_COLOR};
-            }}
-        """)
-        event_layout.addWidget(self.event_list)
-
-        event_form = QHBoxLayout()
-        self.event_date = QDateEdit()
-        self.event_date.setCalendarPopup(True)
-        self.event_date.setDate(QDate.currentDate())
-        self.event_date.setDisplayFormat("yyyy-MM-dd")
-        event_form.addWidget(self.event_date)
-
-        self.event_title = QLineEdit()
-        self.event_title.setPlaceholderText(tr("briefing.event_title_placeholder"))
-        event_form.addWidget(self.event_title, 1)
-
-        btn_add_event = QPushButton("➕ " + tr("briefing.add_event"))
-        btn_add_event.setStyleSheet(f"""
-            QPushButton {{
-                background-color: {ACCENT_PURPLE};
-                color: #FFFFFF;
-                border: none;
-                border-radius: 6px;
-                padding: 6px 12px;
-                font-size: 11px;
-            }}
-            QPushButton:hover {{ background-color: #A78BFA; }}
-        """)
-        btn_add_event.clicked.connect(self._on_add_event)
-        event_form.addWidget(btn_add_event)
-
-        event_layout.addLayout(event_form)
-        right_layout.addWidget(event_box)
+        right_layout.addStretch(1)
 
         splitter.addWidget(right_widget)
         splitter.setSizes([520, 520])
@@ -382,7 +315,6 @@ class BriefingPage(QWidget):
                 self._event_count_by_date[date] = self._event_count_by_date.get(date, 0) + 1
 
         self._refresh_history()
-        self._refresh_events()
         self._refresh_today_card()
 
         if self._briefings:
@@ -427,14 +359,6 @@ class BriefingPage(QWidget):
                 cell.setFlags(cell.flags() & ~Qt.ItemFlag.ItemIsEditable)
                 self.history_table.setItem(row, col, cell)
 
-    def _refresh_events(self):
-        self.event_list.clear()
-        for evt in self._events:
-            text = f"{evt.get('date', '')} - {evt.get('title', '')}"
-            item = QListWidgetItem(text)
-            item.setData(Qt.ItemDataRole.UserRole, evt)
-            self.event_list.addItem(item)
-
     def _show_empty_detail(self):
         self.detail_title.setText("-")
         self.detail_body.setText(tr("briefing.empty"))
@@ -476,20 +400,87 @@ class BriefingPage(QWidget):
             return
         self._show_briefing_detail(self._briefings[row])
 
-    def _on_save_briefing(self):
-        title = self.entry_title.text().strip()
+    def _open_manual_record_dialog(self):
+        dialog = QDialog(self)
+        dialog.setWindowTitle(tr("briefing.manual_record"))
+        dialog.setModal(True)
+        dialog.resize(760, 620)
+
+        layout = QFormLayout(dialog)
+        layout.setSpacing(10)
+
+        entry_date = QDateEdit()
+        entry_date.setCalendarPopup(True)
+        entry_date.setDate(QDate.currentDate())
+        entry_date.setDisplayFormat("yyyy-MM-dd")
+        layout.addRow(tr("briefing.date") + ":", entry_date)
+
+        entry_title = QLineEdit()
+        entry_title.setPlaceholderText(tr("briefing.title_placeholder"))
+        layout.addRow(tr("briefing.title_col") + ":", entry_title)
+
+        entry_overseas = QTextEdit()
+        entry_overseas.setPlaceholderText(tr("briefing.overseas_placeholder"))
+        entry_overseas.setMinimumHeight(90)
+        layout.addRow(tr("briefing.overseas") + ":", entry_overseas)
+
+        entry_domestic = QTextEdit()
+        entry_domestic.setPlaceholderText(tr("briefing.domestic_placeholder"))
+        entry_domestic.setMinimumHeight(90)
+        layout.addRow(tr("briefing.domestic") + ":", entry_domestic)
+
+        entry_market = QTextEdit()
+        entry_market.setPlaceholderText(tr("briefing.market_placeholder"))
+        entry_market.setMinimumHeight(90)
+        layout.addRow(tr("briefing.market") + ":", entry_market)
+
+        entry_summary = QTextEdit()
+        entry_summary.setPlaceholderText(tr("briefing.summary_placeholder"))
+        entry_summary.setMinimumHeight(90)
+        layout.addRow(tr("briefing.summary") + ":", entry_summary)
+
+        btn_row = QHBoxLayout()
+        btn_row.addStretch()
+        btn_cancel = QPushButton(tr("common.cancel"))
+        btn_save = QPushButton("💾 " + tr("common.save"))
+        btn_save.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {BRAND_RED};
+                color: #FFFFFF;
+                border: none;
+                border-radius: 8px;
+                padding: 8px 16px;
+                font-size: 12px;
+                font-weight: bold;
+            }}
+            QPushButton:hover {{ background-color: #F37A90; }}
+        """)
+        btn_row.addWidget(btn_cancel)
+        btn_row.addWidget(btn_save)
+        layout.addRow(btn_row)
+
+        btn_cancel.clicked.connect(dialog.reject)
+
+        def _save_and_close():
+            data = {
+                "date": entry_date.date().toString("yyyy-MM-dd"),
+                "title": entry_title.text().strip(),
+                "overseas": entry_overseas.toPlainText().strip(),
+                "domestic": entry_domestic.toPlainText().strip(),
+                "market": entry_market.toPlainText().strip(),
+                "summary": entry_summary.toPlainText().strip(),
+            }
+            if self._on_save_briefing(data):
+                dialog.accept()
+
+        btn_save.clicked.connect(_save_and_close)
+        dialog.exec()
+
+    def _on_save_briefing(self, data: dict) -> bool:
+        title = str(data.get("title", "") or "").strip()
         if not title:
             QMessageBox.warning(self, tr("common.warning"), tr("briefing.title_required"))
-            return
-
-        data = {
-            "date": self.entry_date.date().toString("yyyy-MM-dd"),
-            "title": title,
-            "overseas": self.entry_overseas.toPlainText().strip(),
-            "domestic": self.entry_domestic.toPlainText().strip(),
-            "market": self.entry_market.toPlainText().strip(),
-            "summary": self.entry_summary.toPlainText().strip(),
-        }
+            return False
 
         try:
             from frontend.services.briefing_service import BriefingService
@@ -498,25 +489,68 @@ class BriefingPage(QWidget):
             svc.add_briefing(data)
         except Exception as e:
             QMessageBox.warning(self, tr("common.error"), tr("briefing.save_failed") + f": {e}")
-            return
+            return False
 
         self._load_data()
-        self.entry_title.clear()
-        self.entry_overseas.clear()
-        self.entry_domestic.clear()
-        self.entry_market.clear()
-        self.entry_summary.clear()
+        return True
 
-    def _on_add_event(self):
-        title = self.event_title.text().strip()
+    def _open_add_event_dialog(self):
+        dialog = QDialog(self)
+        dialog.setWindowTitle(tr("briefing.add_event"))
+        dialog.setModal(True)
+        dialog.resize(540, 220)
+
+        layout = QFormLayout(dialog)
+        layout.setSpacing(10)
+
+        event_date = QDateEdit()
+        event_date.setCalendarPopup(True)
+        event_date.setDate(QDate.currentDate())
+        event_date.setDisplayFormat("yyyy-MM-dd")
+        layout.addRow(tr("briefing.date") + ":", event_date)
+
+        event_title = QLineEdit()
+        event_title.setPlaceholderText(tr("briefing.event_title_placeholder"))
+        layout.addRow(tr("briefing.event_desc") + ":", event_title)
+
+        btn_row = QHBoxLayout()
+        btn_row.addStretch()
+        btn_cancel = QPushButton(tr("common.cancel"))
+        btn_save = QPushButton("➕ " + tr("briefing.add_event"))
+        btn_save.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {ACCENT_PURPLE};
+                color: #FFFFFF;
+                border: none;
+                border-radius: 8px;
+                padding: 8px 16px;
+                font-size: 12px;
+                font-weight: bold;
+            }}
+            QPushButton:hover {{ background-color: #A78BFA; }}
+        """)
+        btn_row.addWidget(btn_cancel)
+        btn_row.addWidget(btn_save)
+        layout.addRow(btn_row)
+
+        btn_cancel.clicked.connect(dialog.reject)
+
+        def _save_and_close():
+            data = {
+                "date": event_date.date().toString("yyyy-MM-dd"),
+                "title": event_title.text().strip(),
+            }
+            if self._on_add_event(data):
+                dialog.accept()
+
+        btn_save.clicked.connect(_save_and_close)
+        dialog.exec()
+
+    def _on_add_event(self, data: dict) -> bool:
+        title = str(data.get("title", "") or "").strip()
         if not title:
             QMessageBox.warning(self, tr("common.warning"), tr("briefing.event_title_required"))
-            return
-
-        data = {
-            "date": self.event_date.date().toString("yyyy-MM-dd"),
-            "title": title,
-        }
+            return False
 
         try:
             from frontend.services.briefing_service import BriefingService
@@ -525,10 +559,10 @@ class BriefingPage(QWidget):
             svc.add_event(data)
         except Exception as e:
             QMessageBox.warning(self, tr("common.error"), tr("briefing.save_failed") + f": {e}")
-            return
+            return False
 
         self._load_data()
-        self.event_title.clear()
+        return True
 
     def _on_import_agi2rich_html(self):
         file_path, _ = QFileDialog.getOpenFileName(

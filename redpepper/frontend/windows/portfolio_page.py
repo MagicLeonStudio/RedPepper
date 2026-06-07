@@ -8,7 +8,7 @@ from PyQt6.QtWidgets import (
     QLineEdit, QComboBox, QFormLayout, QMessageBox, QHeaderView,
     QDoubleSpinBox, QSpinBox, QGroupBox, QFileDialog, QInputDialog, QMenu, QApplication, QTextEdit
 )
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QFont, QColor
 
 from frontend.i18n.translator import tr
@@ -233,6 +233,8 @@ class AddHoldingDialog(QDialog):
 class PortfolioPage(QWidget):
     """Portfolio management page with holdings table."""
 
+    data_changed = pyqtSignal()
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self._stock_data = []
@@ -338,6 +340,21 @@ class PortfolioPage(QWidget):
         """)
         self.btn_delete.clicked.connect(self._on_delete)
         btn_layout.addWidget(self.btn_delete)
+
+        self.btn_batch_delete = QPushButton("🧹 " + tr("portfolio.batch_delete"))
+        self.btn_batch_delete.setStyleSheet(f"""
+            QPushButton {{
+                background-color: #2A2A3E;
+                color: #F05C77;
+                border: 1px solid #F05C77;
+                border-radius: 6px;
+                padding: 8px 16px;
+                font-size: 12px;
+            }}
+            QPushButton:hover {{ background-color: #44F05C77; }}
+        """)
+        self.btn_batch_delete.clicked.connect(self._on_batch_delete)
+        btn_layout.addWidget(self.btn_batch_delete)
 
         self.btn_import_screenshot = QPushButton("🖼 " + tr("portfolio.import_from_screenshot"))
         self.btn_import_screenshot.setStyleSheet(f"""
@@ -651,6 +668,7 @@ class PortfolioPage(QWidget):
                 QMessageBox.warning(self, tr("common.error"), tr("portfolio.save_failed") + f": {e}")
                 return
             self._load_data()
+            self.data_changed.emit()
 
     def _on_edit(self):
         table, dataset = self._get_current_table()
@@ -674,6 +692,7 @@ class PortfolioPage(QWidget):
                 QMessageBox.warning(self, tr("common.error"), tr("portfolio.update_failed") + f": {e}")
                 return
             self._load_data()
+            self.data_changed.emit()
 
     def _on_delete(self):
         table, dataset = self._get_current_table()
@@ -701,6 +720,40 @@ class PortfolioPage(QWidget):
                 QMessageBox.warning(self, tr("common.error"), tr("portfolio.delete_failed") + f": {e}")
                 return
             self._load_data()
+            self.data_changed.emit()
+
+    def _on_batch_delete(self):
+        selected_ids = self._selected_ids()
+        if not selected_ids:
+            QMessageBox.information(self, tr("common.info"), tr("portfolio.select_batch_delete"))
+            return
+
+        reply = QMessageBox.question(
+            self,
+            tr("common.confirm"),
+            tr("portfolio.batch_delete_confirm", count=len(selected_ids)),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        from frontend.services.portfolio_service import PortfolioService
+
+        svc = PortfolioService()
+        try:
+            result = svc.batch_delete(selected_ids)
+            deleted = int(result.get("deleted", 0) if isinstance(result, dict) else 0)
+        except Exception as e:
+            QMessageBox.warning(self, tr("common.error"), tr("portfolio.delete_failed") + f": {e}")
+            return
+
+        self._load_data()
+        self.data_changed.emit()
+        QMessageBox.information(
+            self,
+            tr("common.success"),
+            tr("portfolio.batch_delete_success", count=deleted),
+        )
 
     def _update_summary(self):
         total = sum(float(h.get("amount") or 0) for h in self._stock_data + self._fund_data)
@@ -737,7 +790,7 @@ class PortfolioPage(QWidget):
             if confirmed_csv is None:
                 return
 
-            created_items = run_ocr_import(
+            import_result = run_ocr_import(
                 self,
                 tr("portfolio.screenshot_normalize_title"),
                 lambda _unused, progress_callback=None: svc.import_from_screenshot_csv_text(
@@ -751,10 +804,17 @@ class PortfolioPage(QWidget):
             return
 
         self._load_data()
+        self.data_changed.emit()
+        created = int(import_result.get("created", 0) if isinstance(import_result, dict) else 0)
+        updated = int(import_result.get("updated", 0) if isinstance(import_result, dict) else 0)
+        deleted = int(import_result.get("deleted", 0) if isinstance(import_result, dict) else 0)
+        synced = int(import_result.get("synced", 0) if isinstance(import_result, dict) else 0)
         QMessageBox.information(
             self,
             tr("common.success"),
-            tr("portfolio.screenshot_import_success", count=len(created_items)),
+            tr("portfolio.screenshot_import_success", count=synced)
+            + "\n"
+            + tr("portfolio.import_reconcile_summary", created=created, updated=updated, deleted=deleted),
         )
 
     def _confirm_csv_before_import(self, csv_text: str) -> str | None:
@@ -838,8 +898,16 @@ class PortfolioPage(QWidget):
             return
 
         self._load_data()
+        self.data_changed.emit()
         errors = list(result.get("errors", []) if isinstance(result, dict) else [])
         message = tr("portfolio.import_summary", total=result.get("total", 0), created=result.get("created", 0))
+        if isinstance(result, dict):
+            message += "\n" + tr(
+                "portfolio.import_reconcile_summary",
+                created=result.get("created", 0),
+                updated=result.get("updated", 0),
+                deleted=result.get("deleted", 0),
+            )
         if errors:
             message += "\n" + tr("portfolio.import_errors_preview", errors="；".join(str(e) for e in errors[:3]))
         QMessageBox.information(

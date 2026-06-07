@@ -116,14 +116,25 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.stack, 1)
 
         # Create pages
-        self._add_page("dashboard", DashboardPage(), "📊", tr("nav.dashboard"))
-        self._add_page("portfolio", PortfolioPage(), "📈", tr("nav.portfolio"))
-        self._add_page("watchlist", WatchlistPage(), "👁", tr("nav.watchlist"))
-        self._add_page("trade_log", TradeLogPage(), "📝", tr("nav.trade_log"))
-        self._add_page("briefing", BriefingPage(), "📰", tr("nav.briefing"))
-        self._add_page("diary", DiaryPage(), "📔", tr("nav.diary"))
-        self._add_page("knowledge", KnowledgePage(), "📚", tr("nav.knowledge"))
-        self._add_page("settings", SettingsPage(), "⚙", tr("nav.settings"))
+        self.dashboard_page = DashboardPage()
+        self.portfolio_page = PortfolioPage()
+        self.watchlist_page = WatchlistPage()
+        self.trade_log_page = TradeLogPage()
+        self.briefing_page = BriefingPage()
+        self.diary_page = DiaryPage()
+        self.knowledge_page = KnowledgePage()
+        self.settings_page = SettingsPage()
+
+        self.portfolio_page.data_changed.connect(self.dashboard_page.refresh_data)
+
+        self._add_page("dashboard", self.dashboard_page, "📊", tr("nav.dashboard"))
+        self._add_page("portfolio", self.portfolio_page, "📈", tr("nav.portfolio"))
+        self._add_page("watchlist", self.watchlist_page, "👁", tr("nav.watchlist"))
+        self._add_page("trade_log", self.trade_log_page, "📝", tr("nav.trade_log"))
+        self._add_page("briefing", self.briefing_page, "📰", tr("nav.briefing"))
+        self._add_page("diary", self.diary_page, "📔", tr("nav.diary"))
+        self._add_page("knowledge", self.knowledge_page, "📚", tr("nav.knowledge"))
+        self._add_page("settings", self.settings_page, "⚙", tr("nav.settings"))
 
         # === Status Bar ===
         self.status_bar = QStatusBar()
@@ -215,6 +226,9 @@ class MainWindow(QMainWindow):
         self.stack.setCurrentIndex(index)
         for i, btn in enumerate(self._nav_buttons):
             btn.set_active(i == index)
+
+        if index == 0 and hasattr(self, "dashboard_page"):
+            self.dashboard_page.refresh_data()
 
     def _on_locale_changed(self, locale: str):
         """Handle language change."""

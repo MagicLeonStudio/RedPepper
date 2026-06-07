@@ -273,6 +273,10 @@ class DashboardPage(QWidget):
         layout.addWidget(actions_box)
         layout.addStretch()
 
+    def refresh_data(self):
+        """Public refresh hook used by other pages/window after holdings change."""
+        self._load_data()
+
     def _load_data(self):
         """Load dashboard data from services."""
         try:

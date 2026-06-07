@@ -57,6 +57,24 @@ _DEFAULT_GROUP_ORDER = 999
 _SECURITY_CODE_RE = re.compile(r"(?<!\d)(\d{6})(?!\d)")
 _NAME_RE = re.compile(r"[A-Za-z\u4e00-\u9fa5][A-Za-z0-9\u4e00-\u9fa5]{1,30}")
 _NUMBER_RE = re.compile(r"^-?\d[\d,]*(?:\.\d+)?$")
+_PORTFOLIO_SYNC_FIELDS = (
+    "code",
+    "name",
+    "type",
+    "sector",
+    "amount",
+    "profit",
+    "cost_price",
+    "current_price",
+    "shares",
+    "account",
+    "status",
+    "reason",
+    "target",
+    "group_name",
+    "group_color",
+    "group_order",
+)
 
 
 def _clean_text(value: object, *, default: str = "", max_length: int | None = None) -> str:
@@ -222,38 +240,84 @@ def _sync_watchlist_from_portfolio_item(db: Session, item: Portfolio) -> None:
 
 
 def _reconcile_watchlist_by_portfolio_codes(db: Session, codes: set[str] | None = None) -> int:
-    query = db.query(Portfolio)
-    if codes:
-        normalized_codes = [code for code in {_clean_text(v, max_length=20) for v in codes} if code]
-        if not normalized_codes:
-            return 0
-        query = query.filter(Portfolio.code.in_(normalized_codes))
+    normalized_codes = {_clean_text(v, max_length=20) for v in (codes or set())}
+    normalized_codes = {code for code in normalized_codes if code}
 
-    portfolios = query.all()
-    if not portfolios:
+    if not normalized_codes:
+        portfolio_codes = {
+            _clean_text(code, max_length=20)
+            for code, in db.query(Portfolio.code).all()
+            if _clean_text(code, max_length=20)
+        }
+        watch_codes = {
+            _clean_text(code, max_length=20)
+            for code, in db.query(Watchlist.code).all()
+            if _clean_text(code, max_length=20)
+        }
+        normalized_codes = portfolio_codes | watch_codes
+
+    if not normalized_codes:
         return 0
 
     updated = 0
-    for item in portfolios:
-        code = _clean_text(getattr(item, "code", ""), max_length=20)
-        name = _clean_text(getattr(item, "name", ""), max_length=100)
-        if not code or not name:
-            continue
-
+    for code in normalized_codes:
         watch_item = db.query(Watchlist).filter(Watchlist.code == code).first()
         if watch_item is None:
             continue
 
-        new_status = _watchlist_status_from_portfolio_status(
-            _normalize_portfolio_status(getattr(item, "status", "持有中"))
+        code_portfolios = db.query(Portfolio).filter(Portfolio.code == code).all()
+        if not code_portfolios:
+            if watch_item.status != "观察":
+                watch_item.status = "观察"
+                updated += 1
+            continue
+
+        primary = next(
+            (item for item in code_portfolios if _normalize_portfolio_status(getattr(item, "status", "持有中")) != "已清仓"),
+            code_portfolios[0],
         )
+        portfolio_statuses = {
+            _normalize_portfolio_status(getattr(item, "status", "持有中"))
+            for item in code_portfolios
+        }
+        derived_portfolio_status = "已清仓"
+        if "持有中" in portfolio_statuses:
+            derived_portfolio_status = "持有中"
+        elif "减仓中" in portfolio_statuses:
+            derived_portfolio_status = "减仓中"
+
         changed = False
+        new_status = _watchlist_status_from_portfolio_status(derived_portfolio_status)
         if watch_item.status != new_status:
             watch_item.status = new_status
             changed = True
-        if _clean_text(watch_item.name, max_length=100) != name:
-            watch_item.name = name
+
+        primary_name = _clean_text(getattr(primary, "name", ""), max_length=100)
+        if primary_name and _clean_text(watch_item.name, max_length=100) != primary_name:
+            watch_item.name = primary_name
             changed = True
+
+        primary_type = _normalize_portfolio_type(getattr(primary, "type", "ETF"))
+        if _normalize_portfolio_type(getattr(watch_item, "type", "ETF")) != primary_type:
+            watch_item.type = primary_type
+            changed = True
+
+        primary_group_name = _normalize_group_name(getattr(primary, "group_name", None))
+        if primary_group_name:
+            desired_group_color = _normalize_group_color(getattr(primary, "group_color", None)) or _group_color_for_name(
+                primary_group_name
+            )
+            desired_group_order = _normalize_group_order(getattr(primary, "group_order", _DEFAULT_GROUP_ORDER))
+            if watch_item.group_name != primary_group_name:
+                watch_item.group_name = primary_group_name
+                changed = True
+            if watch_item.group_color != desired_group_color:
+                watch_item.group_color = desired_group_color
+                changed = True
+            if int(getattr(watch_item, "group_order", _DEFAULT_GROUP_ORDER) or _DEFAULT_GROUP_ORDER) != desired_group_order:
+                watch_item.group_order = desired_group_order
+                changed = True
+
         if changed:
             updated += 1
 
@@ -963,8 +1027,14 @@ def _build_portfolio_from_row(row: dict) -> Portfolio:
 
 async def _import_portfolio_rows(rows: list[dict], db: Session) -> dict:
     created = 0
+    updated = 0
+    deleted = 0
+    unchanged = 0
     errors: list[str] = []
     imported_codes: set[str] = set()
+    incoming_by_key: dict[tuple[str, str, str], Portfolio] = {}
+    import_scopes: set[tuple[str, str]] = set()
+
     for row_num, row in enumerate(rows, start=1):
         if not isinstance(row, dict):
             errors.append(f"Row {row_num}: invalid row")
@@ -974,17 +1044,99 @@ async def _import_portfolio_rows(rows: list[dict], db: Session) -> dict:
             if not _clean_text(item.code) or not _clean_text(item.name):
                 errors.append(f"Row {row_num}: missing code/name")
                 continue
-            db.add(item)
-            db.flush()
-            _sync_watchlist_from_portfolio_item(db, item)
+            key = (
+                _clean_text(item.code, max_length=20),
+                _clean_text(item.account, default="中信", max_length=50),
+                _normalize_portfolio_type(getattr(item, "type", "ETF")),
+            )
+            incoming_by_key[key] = item
+            import_scopes.add((key[1], key[2]))
             imported_codes.add(_clean_text(item.code, max_length=20))
-            created += 1
         except Exception as exc:
             errors.append(f"Row {row_num}: {exc}")
 
+    if not incoming_by_key:
+        return {
+            "total": len(rows),
+            "valid": 0,
+            "created": 0,
+            "updated": 0,
+            "deleted": 0,
+            "unchanged": 0,
+            "synced": 0,
+            "linked": 0,
+            "errors": errors,
+        }
+
+    existing_items = db.query(Portfolio).all()
+    existing_by_key: dict[tuple[str, str, str], list[Portfolio]] = {}
+    for existing in existing_items:
+        code = _clean_text(getattr(existing, "code", ""), max_length=20)
+        account = _clean_text(getattr(existing, "account", "中信"), default="中信", max_length=50)
+        ptype = _normalize_portfolio_type(getattr(existing, "type", "ETF"))
+        if not code:
+            continue
+        if (account, ptype) not in import_scopes:
+            continue
+        existing_by_key.setdefault((code, account, ptype), []).append(existing)
+
+    for key, duplicates in existing_by_key.items():
+        if len(duplicates) <= 1:
+            continue
+        keeper = duplicates[0]
+        for redundant in duplicates[1:]:
+            db.delete(redundant)
+            deleted += 1
+        existing_by_key[key] = [keeper]
+
+    existing_keys = set(existing_by_key.keys())
+    incoming_keys = set(incoming_by_key.keys())
+
+    for key in sorted(existing_keys - incoming_keys):
+        for to_delete in existing_by_key.get(key, []):
+            imported_codes.add(_clean_text(getattr(to_delete, "code", ""), max_length=20))
+            db.delete(to_delete)
+            deleted += 1
+
+    for key in sorted(existing_keys & incoming_keys):
+        existing_item = existing_by_key[key][0]
+        incoming_item = incoming_by_key[key]
+
+        changed = False
+        for field in _PORTFOLIO_SYNC_FIELDS:
+            incoming_value = getattr(incoming_item, field)
+            if getattr(existing_item, field) != incoming_value:
+                setattr(existing_item, field, incoming_value)
+                changed = True
+        if changed:
+            updated += 1
+        else:
+            unchanged += 1
+
+    for key in sorted(incoming_keys - existing_keys):
+        new_item = incoming_by_key[key]
+        db.add(new_item)
+        created += 1
+
+    db.flush()
+
+    for key in sorted(incoming_keys):
+        synced_item = existing_by_key[key][0] if key in existing_by_key else incoming_by_key[key]
+        _sync_watchlist_from_portfolio_item(db, synced_item)
+
     linked = _reconcile_watchlist_by_portfolio_codes(db, imported_codes)
     db.commit()
-    return {"created": created, "errors": errors, "total": len(rows), "linked": linked}
+    return {
+        "total": len(rows),
+        "valid": len(incoming_by_key),
+        "created": created,
+        "updated": updated,
+        "deleted": deleted,
+        "unchanged": unchanged,
+        "synced": len(incoming_by_key),
+        "linked": linked,
+        "errors": errors,
+    }
 
 
 def _extract_portfolio_rows_from_text(raw_text: str) -> list[dict]:
@@ -1424,7 +1576,7 @@ async def portfolio_import_csv(request: dict, db: Session = Depends(get_db)) -> 
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"CSV read error: {exc}") from exc
 
     result = await _import_portfolio_rows(rows, db)
-    return {"created": int(result.get("created", 0)), "errors": list(result.get("errors", []))}
+    return result
 
 
 @router.post("/import-items")
@@ -1433,6 +1585,41 @@ async def portfolio_import_items(request: dict, db: Session = Depends(get_db)) -
     if not isinstance(rows, list):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="items must be a list")
     return await _import_portfolio_rows(rows, db)
+
+
+@router.post("/batch-delete")
+async def portfolio_batch_delete(request: dict, db: Session = Depends(get_db)) -> dict:
+    raw_ids = request.get("ids", [])
+    if not isinstance(raw_ids, list):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="ids must be a list")
+
+    ids: list[int] = []
+    for value in raw_ids:
+        text = str(value).strip()
+        if not text.isdigit():
+            continue
+        ids.append(int(text))
+
+    if not ids:
+        return {"deleted": 0, "linked": 0}
+
+    items = db.query(Portfolio).filter(Portfolio.id.in_(ids)).all()
+    if not items:
+        return {"deleted": 0, "linked": 0}
+
+    affected_codes = {
+        _clean_text(getattr(item, "code", ""), max_length=20)
+        for item in items
+        if _clean_text(getattr(item, "code", ""), max_length=20)
+    }
+
+    for item in items:
+        db.delete(item)
+
+    db.flush()
+    linked = _reconcile_watchlist_by_portfolio_codes(db, affected_codes)
+    db.commit()
+    return {"deleted": len(items), "linked": linked}
 
 
 @router.post("/grouping/auto")

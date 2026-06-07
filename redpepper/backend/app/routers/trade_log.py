@@ -151,11 +151,59 @@ async def _deepseek_match_codes(unmatched_names: list[str], candidates: list[dic
 
 
 def _extract_js_string_field(blob: str, key: str) -> str:
-    pattern = rf"\b{re.escape(key)}\s*:\s*(['\"])(.*?)\1"
-    match = re.search(pattern, blob, flags=re.DOTALL)
+    pattern = rf"\b{re.escape(key)}\s*:"
+    match = re.search(pattern, blob)
     if not match:
         return ""
-    return match.group(2).replace("\\n", "\n").strip()
+
+    idx = match.end()
+    while idx < len(blob) and blob[idx].isspace():
+        idx += 1
+    if idx >= len(blob):
+        return ""
+
+    quote = blob[idx]
+    if quote not in ("'", '"', "`"):
+        return ""
+
+    idx += 1
+    chars: list[str] = []
+    escaped = False
+
+    while idx < len(blob):
+        ch = blob[idx]
+        if escaped:
+            if ch == "n":
+                chars.append("\n")
+            elif ch == "r":
+                chars.append("\r")
+            elif ch == "t":
+                chars.append("\t")
+            elif ch == "u" and idx + 4 < len(blob):
+                hex_part = blob[idx + 1 : idx + 5]
+                if re.fullmatch(r"[0-9a-fA-F]{4}", hex_part):
+                    chars.append(chr(int(hex_part, 16)))
+                    idx += 4
+                else:
+                    chars.append(ch)
+            else:
+                chars.append(ch)
+            escaped = False
+            idx += 1
+            continue
+
+        if ch == "\\":
+            escaped = True
+            idx += 1
+            continue
+
+        if ch == quote:
+            break
+
+        chars.append(ch)
+        idx += 1
+
+    return "".join(chars).strip()
 
 
 def _extract_js_number_field(blob: str, key: str) -> float | None:
