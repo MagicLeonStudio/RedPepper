@@ -230,6 +230,7 @@ def _sync_watchlist_from_portfolio_item(db: Session, item: Portfolio) -> None:
     watch_item.sector = _clean_text(getattr(item, "sector", ""), max_length=50) or watch_item.sector
     watch_item.status = watch_status
 
+    # Always propagate group changes to watchlist, including clearing the group.
     portfolio_group_name = _normalize_group_name(getattr(item, "group_name", None))
     if portfolio_group_name:
         watch_item.group_name = portfolio_group_name
@@ -237,6 +238,10 @@ def _sync_watchlist_from_portfolio_item(db: Session, item: Portfolio) -> None:
             portfolio_group_name
         )
         watch_item.group_order = _normalize_group_order(getattr(item, "group_order", _DEFAULT_GROUP_ORDER))
+    else:
+        watch_item.group_name = None
+        watch_item.group_color = None
+        watch_item.group_order = _DEFAULT_GROUP_ORDER
 
 
 def _reconcile_watchlist_by_portfolio_codes(db: Session, codes: set[str] | None = None) -> int:
@@ -1041,17 +1046,20 @@ async def _import_portfolio_rows(rows: list[dict], db: Session) -> dict:
             continue
         try:
             item = _build_portfolio_from_row(row)
-            if not _clean_text(item.code) or not _clean_text(item.name):
-                errors.append(f"Row {row_num}: missing code/name")
+            code = _clean_text(item.code, max_length=20)
+            name = _clean_text(item.name, max_length=100)
+            # Robust import: a holding only needs a name to be importable; the
+            # code (and other fields) can be completed later by manual editing.
+            if not name:
+                errors.append(f"Row {row_num}: missing name")
                 continue
-            key = (
-                _clean_text(item.code, max_length=20),
-                _clean_text(item.account, default="中信", max_length=50),
-                _normalize_portfolio_type(getattr(item, "type", "ETF")),
-            )
+            account = _clean_text(item.account, default="中信", max_length=50)
+            ptype = _normalize_portfolio_type(getattr(item, "type", "ETF"))
+            key = (code if code else f"name:{name}", account, ptype)
             incoming_by_key[key] = item
-            import_scopes.add((key[1], key[2]))
-            imported_codes.add(_clean_text(item.code, max_length=20))
+            import_scopes.add((account, ptype))
+            if code:
+                imported_codes.add(code)
         except Exception as exc:
             errors.append(f"Row {row_num}: {exc}")
 
@@ -1072,13 +1080,15 @@ async def _import_portfolio_rows(rows: list[dict], db: Session) -> dict:
     existing_by_key: dict[tuple[str, str, str], list[Portfolio]] = {}
     for existing in existing_items:
         code = _clean_text(getattr(existing, "code", ""), max_length=20)
+        name = _clean_text(getattr(existing, "name", ""), max_length=100)
         account = _clean_text(getattr(existing, "account", "中信"), default="中信", max_length=50)
         ptype = _normalize_portfolio_type(getattr(existing, "type", "ETF"))
-        if not code:
+        if not code and not name:
             continue
         if (account, ptype) not in import_scopes:
             continue
-        existing_by_key.setdefault((code, account, ptype), []).append(existing)
+        key_code = code if code else f"name:{name}"
+        existing_by_key.setdefault((key_code, account, ptype), []).append(existing)
 
     for key, duplicates in existing_by_key.items():
         if len(duplicates) <= 1:
@@ -1212,16 +1222,21 @@ def _parse_portfolio_csv_rows(csv_text: str) -> list[dict]:
     if not text:
         return []
 
-    lines = [line for line in text.splitlines() if line.strip()]
+    raw_lines = [line.strip() for line in text.splitlines() if line.strip()]
+    lines = [line for line in raw_lines if not line.startswith("#") and not line.startswith("---")]
     if len(lines) < 2:
         return []
 
-    header_index = 0
+    header_index = -1
     for idx, line in enumerate(lines):
         lower = line.lower()
-        if "code" in lower and "name" in lower:
+        if (("code" in lower and "name" in lower) or ("证券名称" in line and "市值" in line)) and (
+            "," in line or "\t" in line or ";" in line or "|" in line
+        ):
             header_index = idx
             break
+    if header_index < 0:
+        return []
     text = "\n".join(lines[header_index:])
 
     header_line = text.splitlines()[0]
@@ -1240,6 +1255,17 @@ def _parse_portfolio_csv_rows(csv_text: str) -> list[dict]:
         for name in reader.fieldnames
         if str(name or "").strip()
     }
+
+    def _resolve_header_key(alias: str) -> str | None:
+        alias_lower = alias.lower()
+        direct = header_map.get(alias_lower)
+        if direct is not None:
+            return direct
+        for key, raw_key in header_map.items():
+            normalized_key = re.sub(r"\(.*?\)", "", key)
+            if alias_lower in key or alias_lower in normalized_key:
+                return raw_key
+        return None
     aliases = {
         "code": ["code", "证券代码", "代码"],
         "name": ["name", "证券名称", "名称"],
@@ -1255,7 +1281,7 @@ def _parse_portfolio_csv_rows(csv_text: str) -> list[dict]:
 
     def _value(row: dict, key: str) -> str:
         for alias in aliases[key]:
-            raw_key = header_map.get(alias.lower())
+            raw_key = _resolve_header_key(alias)
             if raw_key is None:
                 continue
             value = row.get(raw_key)
@@ -1268,8 +1294,10 @@ def _parse_portfolio_csv_rows(csv_text: str) -> list[dict]:
         if not isinstance(row, dict):
             continue
         code = _clean_text(_value(row, "code"), max_length=20)
+        code_match = _SECURITY_CODE_RE.search(code)
+        code = code_match.group(1) if code_match else ""
         name = _clean_text(_value(row, "name"), max_length=100)
-        if not code or not name:
+        if not name:
             continue
         rows.append(
             {
@@ -1286,6 +1314,84 @@ def _parse_portfolio_csv_rows(csv_text: str) -> list[dict]:
             }
         )
     return rows
+
+
+# Suffixes stripped when comparing holding names so fuzzy variants like
+# "科创50" and "科创50ETF" map to the same merge key.
+_HOLDING_FUZZY_SUFFIXES = ("etf", "lof", "指数基金", "联接基金", "基金", "指数")
+
+
+def _fuzzy_holding_name_key(name: str) -> str:
+    """Return a normalised key for fuzzy holding-name matching.
+
+    Strips common fund-type suffixes (ETF/LOF/基金…) and extra whitespace so
+    variants like "科创50" and "科创50 ETF" collapse to the same key.
+    At least two characters must remain after stripping to avoid over-collapse
+    (e.g. bare "A" / "C" share-class suffixes are not stripped on their own).
+    """
+    text = re.sub(r"[\s　]+", "", str(name or "")).lower()  # drop all whitespace
+    for suffix in _HOLDING_FUZZY_SUFFIXES:
+        if text.endswith(suffix) and len(text) - len(suffix) >= 2:
+            text = text[: -len(suffix)]
+            break  # strip at most one suffix per pass
+    return text
+
+
+def _merge_portfolio_csv_rows(rows: list[dict]) -> list[dict]:
+    """Merge parsed rows coming from multiple screenshots.
+
+    Rows are keyed by 6-digit code when available, otherwise by name. Non-empty
+    fields from later rows fill blanks left by earlier rows so complementary
+    information across screenshots is consolidated into a single holding.
+
+    Fuzzy name matching is used so that variants like "科创50" and "科创50ETF"
+    are treated as the same holding (common fund-type suffixes are stripped
+    before comparison). When merging, the longer/more complete name wins.
+    """
+    merged: dict[str, dict] = {}
+    order: list[str] = []
+    # Maps both exact lower-case name AND fuzzy-stripped key → canonical merge key
+    name_to_key: dict[str, str] = {}
+    empty_values = (None, "", [], {})
+
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        code = _clean_text(row.get("code", ""), max_length=20)
+        name = _clean_text(row.get("name", ""), max_length=100)
+        if not code and not name:
+            continue
+
+        name_exact = name.lower()
+        name_fuzzy = _fuzzy_holding_name_key(name)
+
+        # Look for an existing key by exact name first, then by fuzzy key.
+        key = name_to_key.get(name_exact) or name_to_key.get(name_fuzzy)
+        if not key:
+            key = code if code else f"name:{name}"
+
+        # Register both lookup aliases so future rows find this key.
+        name_to_key.setdefault(name_exact, key)
+        if name_fuzzy and name_fuzzy != name_exact:
+            name_to_key.setdefault(name_fuzzy, key)
+
+        if key not in merged:
+            merged[key] = dict(row)
+            order.append(key)
+            continue
+
+        target = merged[key]
+        for field, value in row.items():
+            if value in empty_values:
+                continue
+            if field == "name":
+                # Keep the longer (more descriptive) name.
+                if len(str(value)) > len(str(target.get("name", "") or "")):
+                    target["name"] = value
+            elif not target.get(field):
+                target[field] = value
+
+    return [merged[key] for key in order]
 
 
 async def _normalize_portfolio_rows_with_deepseek(csv_text: str, rows: list[dict]) -> list[dict]:
@@ -1308,7 +1414,9 @@ async def _normalize_portfolio_rows_with_deepseek(csv_text: str, rows: list[dict
         "3) status 只能是 持有中/减仓中/已清仓；\n"
         "4) account 缺失时填 中信；\n"
         "5) 数值字段无法确定时可为 null；\n"
-        "6) 只返回 JSON，不要解释。\n\n"
+        "6) 如果多行持仓名称相似（如\"科创50\"与\"科创50ETF\"、\"纳指\"与\"纳指ETF\"指同一标的），"
+        "合并为一行，取信息最完整的那行，保留更完整的名称；\n"
+        "7) 只返回 JSON，不要解释。\n\n"
         f"CSV 原文:\n{csv_text}\n\n"
         f"初步解析:\n{json.dumps(rows, ensure_ascii=False)}"
     )
@@ -1337,7 +1445,8 @@ async def _normalize_portfolio_rows_with_deepseek(csv_text: str, rows: list[dict
             continue
         code = _clean_text(row.get("code", ""), max_length=20)
         name = _clean_text(row.get("name", ""), max_length=100)
-        if not code or not name:
+        # Keep name-only rows so missing codes can be completed later.
+        if not name:
             continue
         normalized.append(
             {
@@ -1541,6 +1650,43 @@ async def portfolio_ocr_normalize_csv(request: dict) -> dict:
         "provider": "deepseek",
         "model": "deepseek-v4-flash",
         "parsed": len(parsed_rows),
+        "items": normalized_rows,
+    }
+
+
+@router.post("/ocr-merge-normalize-csv")
+async def portfolio_ocr_merge_normalize_csv(request: dict) -> dict:
+    """Merge multiple screenshot CSVs into one consolidated holdings list.
+
+    Each screenshot may only contain partial information (one has codes, another
+    has market values, etc.). We parse every CSV, merge rows by code/name so that
+    complementary fields combine, then let DeepSeek fuzzy-match and clean the
+    result. The endpoint never hard-fails: incomplete rows are returned for the
+    user to complete manually before import.
+    """
+    raw_texts = request.get("csv_texts", [])
+    if not isinstance(raw_texts, list):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="csv_texts must be a list")
+    texts = [str(t or "") for t in raw_texts if str(t or "").strip()]
+    if not texts:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="csv_texts is required")
+
+    all_rows: list[dict] = []
+    for text in texts:
+        rows = _parse_portfolio_csv_rows(text)
+        if not rows:
+            rows = _extract_portfolio_rows_from_text(text)
+        all_rows.extend(rows)
+
+    merged_rows = _merge_portfolio_csv_rows(all_rows)
+    combined_csv = "\n\n".join(texts)
+    normalized_rows = await _normalize_portfolio_rows_with_deepseek(combined_csv, merged_rows)
+
+    return {
+        "provider": "deepseek",
+        "model": "deepseek-v4-flash",
+        "parsed": len(merged_rows),
+        "sources": len(texts),
         "items": normalized_rows,
     }
 

@@ -205,6 +205,33 @@ def _derive_group_fields(
     return normalized_name, normalized_color, normalized_order
 
 
+def _sync_portfolio_groups_from_watchlist_item(db: Session, watch_item: Watchlist) -> None:
+    """Propagate the watchlist item's group to all portfolio items with the same code.
+
+    This is the watchlist → portfolio direction of group sync.  It is called
+    whenever a watchlist item's group fields are written so that both tables
+    stay consistent without the user having to manage groups in two places.
+    """
+    code = _clean_text(getattr(watch_item, "code", ""), max_length=20)
+    if not code:
+        return
+
+    group_name = _normalize_group_name(getattr(watch_item, "group_name", None))
+    group_color: str | None
+    if group_name:
+        group_color = _normalize_group_color(getattr(watch_item, "group_color", None)) or _group_color_for_name(group_name)
+        group_order = _normalize_group_order(getattr(watch_item, "group_order", _DEFAULT_GROUP_ORDER))
+    else:
+        group_color = None
+        group_order = _DEFAULT_GROUP_ORDER
+
+    portfolio_items = db.query(Portfolio).filter(Portfolio.code == code).all()
+    for p_item in portfolio_items:
+        p_item.group_name = group_name
+        p_item.group_color = group_color
+        p_item.group_order = group_order
+
+
 async def _enrich_watchlist_items(provider, model: str, items: list[OCRWatchlistItem]) -> list[OCRWatchlistItem]:
     if not items:
         return items
@@ -780,6 +807,7 @@ async def watchlist_group_auto(request: dict, db: Session = Depends(get_db)) -> 
         item.group_name = group_name
         item.group_color = _group_color_for_name(group_name)
         item.group_order = group_order_map.get(group_name, _DEFAULT_GROUP_ORDER)
+        _sync_portfolio_groups_from_watchlist_item(db, item)
         group_counts[group_name] = group_counts.get(group_name, 0) + 1
 
     db.commit()
@@ -832,6 +860,7 @@ async def watchlist_group_semi(request: dict, db: Session = Depends(get_db)) -> 
         item.group_name = group_name
         item.group_color = _group_color_for_name(group_name)
         item.group_order = group_order_map[group_name]
+        _sync_portfolio_groups_from_watchlist_item(db, item)
         group_counts[group_name] = group_counts.get(group_name, 0) + 1
 
     db.commit()
@@ -881,6 +910,7 @@ async def watchlist_group_manual(request: dict, db: Session = Depends(get_db)) -
         item.group_name = group_name
         item.group_color = group_color
         item.group_order = group_order
+        _sync_portfolio_groups_from_watchlist_item(db, item)
 
     db.commit()
     return {
@@ -1024,6 +1054,8 @@ async def update_watchlist(
 
     for key, value in payload.items():
         setattr(item, key, value)
+    if {"group_name", "group_color", "group_order"} & set(payload.keys()):
+        _sync_portfolio_groups_from_watchlist_item(db, item)
     db.commit()
     db.refresh(item)
     return item

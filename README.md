@@ -160,6 +160,8 @@ RedPepper（红椒）是一款面向 A 股个人投资者的本地桌面应用�
 
 - 已完成：Phase 1 全量收口，Phase 2 关键数据链路可用（导入、关联、双模型、日志/简报/日记基础能力）
 - 新增：知识库 AGI2Rich HTML 导入增强（多文件 + images 目录 + 自动标签 + 内嵌预览 + 本地浏览器预览 + 批量删除）
+- 新增：截图导入重构为多图融合模式（Kimi 逐张 OCR + DeepSeek 跨图聚合 + 模糊名称匹配）；入库策略放宽为「有名称即可入库」，结合可编辑预览确保每次导入都有结果
+- 新增：持仓与观察池分组双向同步（任一侧修改分组，另一侧自动跟随）
 - 进行中：Phase 2 深化（简报/日记自动化、稳定性回归、可用性打磨）
 - 规划中：Phase 3 知识深化、Phase 4 手机版预研
 - 下一里程碑：v0.0.6 聚焦 Phase 2 自动化补齐与 Phase 3 知识能力扩展
@@ -167,6 +169,29 @@ RedPepper（红椒）是一款面向 A 股个人投资者的本地桌面应用�
 ---
 
 ## 开发日志 / Changelog
+
+### v0.0.5-patch (2026-06-09)
+
+本次补丁重点是"截图导入鲁棒性重构 + 持仓观察池分组双向同步 + 编辑体验修复"。
+
+**截图导入重构（多图融合 + 永不失败）**
+- 截图导入由单张改为多选，支持同时选择多张互补截图（如一张有代码、一张有市值）
+- Kimi-k2.6 逐张 OCR 提取 CSV，新增 `/ocr-merge-normalize-csv` 端点，由 DeepSeek 将多张 CSV 跨图融合并结构化
+- 新增 `_merge_portfolio_csv_rows` 合并函数，按名称归并行，后来的字段填补先前的空白，实现跨截图信息聚合
+- 新增模糊名称匹配：剥离 ETF/LOF/基金/指数 等常见后缀后再比较，确保"科创50"与"科创50ETF"能识别为同一标的并合并
+- DeepSeek prompt 增加规则：遇到相似名称主动合并，保留信息更完整的版本
+- 后端入库校验放宽为"有名称即可入库"，证券代码可为空，key 用 `code or name:<name>` 兜底
+- DeepSeek 归一化不再丢弃无代码行，服务层 `import_from_extracted_items` 增加 `allow_partial` 参数
+- 导入前始终弹出可编辑预览（`_edit_items_before_import`），用户可补全缺失字段；不完整条目可先入库、后续在表格中编辑
+- 修复之前补丁中 `import_from_screenshot_csv_text` 方法内引用未定义变量 `result`/`text` 导致运行时 NameError 的问题
+
+**持仓与观察池分组双向同步**
+- 新增 `_sync_portfolio_groups_from_watchlist_item` helper（watchlist.py）：观察池修改分组时，自动将同代码的所有持仓同步为相同分组
+- 观察池的 `PUT /{id}`、`/grouping/auto`、`/grouping/semi`、`/grouping/manual` 四个写入端点均接入双向同步
+- 修复持仓侧同步函数只在有分组名称时才写入的问题，现在清空分组也会同步清空观察池的对应分组
+
+**稳定性修复**
+- 修复在导入后的条目上点击「编辑」时，`QDoubleSpinBox.setValue` 收到 `None` 导致的 `TypeError`；四个数值字段（amount/profit/cost_price/shares）统一用 `or 0` 兜底
 
 ### v0.0.5 (2026-06-05)
 

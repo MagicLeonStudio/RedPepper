@@ -119,19 +119,19 @@ def slice_image_base64(image_base64: str) -> list[str]:
         return [strip_data_url(image_base64)]
 
     width, height = image.size
-    pixel_count = width * height
-    if height <= 1100 and pixel_count <= 1_000_000 and height <= width * 2.0:
-        return [_encode_image(image, max_width=800, max_height=1100)]
+    # Keep single-frame OCR for regular screenshots; only split very tall images.
+    if height <= 2048:
+        return [_encode_image(image, max_width=1280, max_height=2048)]
 
     segments: list[str] = []
-    slice_height = 640
-    overlap = 96
+    slice_height = 1024
+    overlap = 128
     top = 0
 
     while top < height:
         bottom = min(height, top + slice_height)
         crop = image.crop((0, top, width, bottom))
-        segments.append(_encode_image(crop, max_width=800, max_height=1100))
+        segments.append(_encode_image(crop, max_width=1280, max_height=1600))
         if bottom >= height:
             break
         top = bottom - overlap

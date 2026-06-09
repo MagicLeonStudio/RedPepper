@@ -194,7 +194,18 @@ class OCRProgressDialog(QDialog):
             self.progress.setRange(0, total)
             self.progress.setValue(min(max(current, 0), total))
             self.progress.setTextVisible(True)
-            self.segment_counter.setText(f"Fragments: {current}/{total}")
+
+        segment_current = int(payload.get("segment_current", 0) or 0)
+        segment_total = int(payload.get("segment_total", 0) or 0)
+        if segment_total > 0:
+            if segment_total <= 1:
+                self.segment_counter.setText("Fragments: 1/1 (no split)")
+            else:
+                self.segment_counter.setText(f"Fragments: {segment_current}/{segment_total}")
+        elif total > 0:
+            self.segment_counter.setText(f"Progress: {current}/{total}")
+        else:
+            self.segment_counter.setText("")
 
         original_b64 = str(payload.get("original_image_base64", "") or "")
         if original_b64:

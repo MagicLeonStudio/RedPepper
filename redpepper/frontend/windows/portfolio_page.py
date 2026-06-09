@@ -1,6 +1,9 @@
 """Portfolio Management Page."""
 
+import csv
 import hashlib
+import re
+from io import StringIO
 
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QTabWidget,
@@ -196,10 +199,10 @@ class AddHoldingDialog(QDialog):
             holding_type = str(self.edit_data.get("type", "Stock")).strip().lower()
             index = self.type_combo.findData({"stock": "Stock", "etf": "ETF", "fund": "Fund"}.get(holding_type, "Stock"))
             self.type_combo.setCurrentIndex(index if index >= 0 else 0)
-            self.amount_spin.setValue(self.edit_data.get("amount", 0))
-            self.return_spin.setValue(self.edit_data.get("return_value", 0))
-            self.cost_spin.setValue(self.edit_data.get("cost_price", 0))
-            self.shares_spin.setValue(self.edit_data.get("shares", 0))
+            self.amount_spin.setValue(float(self.edit_data.get("amount") or 0))
+            self.return_spin.setValue(float(self.edit_data.get("return_value") or 0))
+            self.cost_spin.setValue(float(self.edit_data.get("cost_price") or 0))
+            self.shares_spin.setValue(int(self.edit_data.get("shares") or 0))
             self.account_input.setText(self.edit_data.get("account", ""))
             self.group_input.setText(self.edit_data.get("group", ""))
             status_value = str(self.edit_data.get("status", "holding")).strip().lower()
@@ -765,39 +768,50 @@ class PortfolioPage(QWidget):
             self.empty_hint.hide()
 
     def _on_import_screenshot(self):
-        file_path, _ = QFileDialog.getOpenFileName(
+        file_paths, _ = QFileDialog.getOpenFileNames(
             self,
             tr("portfolio.import_from_screenshot"),
             "",
             "Images (*.png *.jpg *.jpeg *.bmp *.webp)",
         )
-        if not file_path:
+        if not file_paths:
             return
 
         from frontend.services.portfolio_service import PortfolioService
 
         svc = PortfolioService()
         try:
-            extraction = run_ocr_import(
+            merge_result = run_ocr_import(
                 self,
                 tr("portfolio.screenshot_extract_csv_title"),
-                svc.extract_csv_from_screenshot,
-                file_path,
+                lambda _unused, progress_callback=None: svc.extract_and_merge_screenshots(
+                    file_paths,
+                    progress_callback=progress_callback,
+                ),
+                file_paths,
             )
 
-            extracted_csv = str(extraction.get("csv_text", "") if isinstance(extraction, dict) else "")
-            confirmed_csv = self._confirm_csv_before_import(extracted_csv)
-            if confirmed_csv is None:
+            merged_items = list(merge_result.get("items", []) if isinstance(merge_result, dict) else [])
+            if not merged_items:
+                QMessageBox.warning(self, tr("common.warning"), tr("portfolio.screenshot_no_items"))
+                return
+
+            # Always show an editable preview so the user can complete any missing
+            # fields. Import never hard-fails: every row with a name is stored,
+            # incomplete rows can be refined here or edited later in the table.
+            edited_items = self._edit_items_before_import(merged_items)
+            if edited_items is None:
                 return
 
             import_result = run_ocr_import(
                 self,
                 tr("portfolio.screenshot_normalize_title"),
-                lambda _unused, progress_callback=None: svc.import_from_screenshot_csv_text(
-                    confirmed_csv,
+                lambda _unused, progress_callback=None: svc.import_from_extracted_items(
+                    edited_items,
                     progress_callback=progress_callback,
+                    allow_partial=True,
                 ),
-                "csv-confirmed",
+                "edited-items-confirmed",
             )
         except Exception as e:
             QMessageBox.warning(self, tr("common.error"), tr("portfolio.screenshot_import_failed") + f": {e}")
@@ -842,7 +856,24 @@ class PortfolioPage(QWidget):
         layout.addLayout(btn_layout)
 
         btn_cancel.clicked.connect(dialog.reject)
-        btn_ok.clicked.connect(dialog.accept)
+
+        def _on_confirm() -> None:
+            candidate = editor.toPlainText().strip()
+            if not candidate:
+                QMessageBox.warning(self, tr("common.warning"), tr("portfolio.csv_empty_cancelled"))
+                return
+            if self._csv_has_no_account_info(candidate):
+                QMessageBox.information(
+                    dialog,
+                    tr("common.info"),
+                    tr("portfolio.csv_missing_account_reminder"),
+                )
+            dialog.accept()
+
+        btn_ok.clicked.connect(_on_confirm)
+
+        if self._csv_has_no_account_info(csv_text):
+            tip.setText(tr("portfolio.confirm_csv_tip") + "\n\n" + tr("portfolio.csv_missing_account_reminder"))
 
         if dialog.exec() != 1:
             return None
@@ -852,6 +883,257 @@ class PortfolioPage(QWidget):
             QMessageBox.warning(self, tr("common.warning"), tr("portfolio.csv_empty_cancelled"))
             return None
         return final_csv
+
+    def _csv_has_no_account_info(self, csv_text: str) -> bool:
+        text = str(csv_text or "").replace("\ufeff", "").strip()
+        if not text:
+            return True
+
+        lines = [line for line in text.splitlines() if line.strip()]
+        if len(lines) < 2:
+            return True
+
+        header_line = lines[0]
+        delimiters = [",", "\t", ";", "|"]
+        delimiter = max(delimiters, key=lambda d: header_line.count(d))
+
+        try:
+            reader = csv.DictReader(StringIO(text), delimiter=delimiter)
+        except Exception:
+            return True
+
+        if not reader.fieldnames:
+            return True
+
+        header_map = {
+            str(name or "").strip().lower(): name
+            for name in reader.fieldnames
+            if str(name or "").strip()
+        }
+        account_key = None
+        for alias in ("account", "账户"):
+            account_key = header_map.get(alias.lower())
+            if account_key:
+                break
+
+        if not account_key:
+            return True
+
+        for row in reader:
+            if not isinstance(row, dict):
+                continue
+            if str(row.get(account_key, "") or "").strip():
+                return False
+        return True
+
+    def _normalize_security_code(self, value: str) -> str:
+        text = str(value or "").strip()
+        match = re.search(r"(?<!\d)(\d{6})(?!\d)", text)
+        return match.group(1) if match else ""
+
+    def _edit_items_before_import(self, items: list[dict]) -> list[dict] | None:
+        """Always-show editable preview for screenshot import.
+
+        Presents the merged holdings as an editable CSV. Unlike the strict
+        confirmation dialog, this never blocks on missing codes: any row with a
+        name is accepted so the import always produces a result. The user can
+        fill in missing codes/values here or refine them later in the table.
+        """
+        template_lines = ["code,name,type,amount,profit,cost_price,shares,account,status"]
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            if not str(item.get("name", "") or "").strip():
+                continue
+            row = [
+                self._normalize_security_code(str(item.get("code", "") or "")),
+                str(item.get("name", "") or "").strip(),
+                str(item.get("type", "ETF") or "ETF").strip() or "ETF",
+                "" if item.get("amount") in (None, "") else str(item.get("amount")),
+                "" if item.get("profit") in (None, "") else str(item.get("profit")),
+                "" if item.get("cost_price") in (None, "") else str(item.get("cost_price")),
+                "" if item.get("shares") in (None, "") else str(item.get("shares")),
+                str(item.get("account", "中信") or "中信").strip() or "中信",
+                str(item.get("status", "持有中") or "持有中").strip() or "持有中",
+            ]
+            escaped = [f'"{value.replace("\"", "\"\"")}"' if "," in value else value for value in row]
+            template_lines.append(",".join(escaped))
+
+        if len(template_lines) <= 1:
+            QMessageBox.warning(self, tr("common.warning"), tr("portfolio.screenshot_no_items"))
+            return None
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle(tr("portfolio.edit_items_dialog_title"))
+        dialog.setModal(True)
+        dialog.resize(840, 620)
+
+        layout = QVBoxLayout(dialog)
+        tip = QLabel(tr("portfolio.edit_items_dialog_tip"))
+        tip.setWordWrap(True)
+        layout.addWidget(tip)
+
+        editor = QTextEdit(dialog)
+        editor.setPlainText("\n".join(template_lines))
+        editor.setMinimumHeight(470)
+        layout.addWidget(editor)
+
+        btn_layout = QHBoxLayout()
+        btn_cancel = QPushButton(tr("common.cancel"))
+        btn_ok = QPushButton(tr("portfolio.confirm_import"))
+        btn_layout.addStretch()
+        btn_layout.addWidget(btn_cancel)
+        btn_layout.addWidget(btn_ok)
+        layout.addLayout(btn_layout)
+
+        btn_cancel.clicked.connect(dialog.reject)
+        btn_ok.clicked.connect(dialog.accept)
+
+        if dialog.exec() != 1:
+            return None
+
+        edited_csv = editor.toPlainText().replace("\ufeff", "").strip()
+        if not edited_csv:
+            QMessageBox.warning(self, tr("common.warning"), tr("portfolio.csv_empty_cancelled"))
+            return None
+
+        try:
+            reader = csv.DictReader(StringIO(edited_csv))
+            fieldnames = reader.fieldnames
+        except Exception:
+            QMessageBox.warning(self, tr("common.warning"), tr("portfolio.manual_code_invalid_csv"))
+            return None
+
+        if not fieldnames:
+            QMessageBox.warning(self, tr("common.warning"), tr("portfolio.manual_code_invalid_csv"))
+            return None
+
+        rows: list[dict] = []
+        for row in reader:
+            if not isinstance(row, dict):
+                continue
+            name = str(row.get("name", "") or "").strip()
+            if not name:
+                continue
+            rows.append(
+                {
+                    "code": self._normalize_security_code(str(row.get("code", "") or "")),
+                    "name": name,
+                    "type": str(row.get("type", "ETF") or "ETF").strip() or "ETF",
+                    "amount": str(row.get("amount", "") or "").strip(),
+                    "profit": str(row.get("profit", "") or "").strip(),
+                    "cost_price": str(row.get("cost_price", "") or "").strip(),
+                    "shares": str(row.get("shares", "") or "").strip(),
+                    "account": str(row.get("account", "中信") or "中信").strip() or "中信",
+                    "status": str(row.get("status", "持有中") or "持有中").strip() or "持有中",
+                }
+            )
+
+        if not rows:
+            QMessageBox.warning(self, tr("common.warning"), tr("portfolio.screenshot_no_items"))
+            return None
+
+        return rows
+
+    def _confirm_missing_codes_before_import(self, normalized_items: list[dict]) -> list[dict] | None:
+        template_lines = ["code,name,type,amount,profit,cost_price,shares,account,status"]
+        for item in normalized_items:
+            if not isinstance(item, dict):
+                continue
+            row = [
+                self._normalize_security_code(str(item.get("code", "") or "")),
+                str(item.get("name", "") or "").strip(),
+                str(item.get("type", "ETF") or "ETF").strip() or "ETF",
+                "" if item.get("amount") in (None, "") else str(item.get("amount")),
+                "" if item.get("profit") in (None, "") else str(item.get("profit")),
+                "" if item.get("cost_price") in (None, "") else str(item.get("cost_price")),
+                "" if item.get("shares") in (None, "") else str(item.get("shares")),
+                str(item.get("account", "中信") or "中信").strip() or "中信",
+                str(item.get("status", "持有中") or "持有中").strip() or "持有中",
+            ]
+            escaped = [f'"{value.replace("\"", "\"\"")}"' if "," in value else value for value in row]
+            template_lines.append(",".join(escaped))
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle(tr("portfolio.manual_code_dialog_title"))
+        dialog.setModal(True)
+        dialog.resize(820, 600)
+
+        layout = QVBoxLayout(dialog)
+        tip = QLabel(tr("portfolio.manual_code_dialog_tip"))
+        tip.setWordWrap(True)
+        layout.addWidget(tip)
+
+        editor = QTextEdit(dialog)
+        editor.setPlainText("\n".join(template_lines))
+        editor.setMinimumHeight(460)
+        layout.addWidget(editor)
+
+        btn_layout = QHBoxLayout()
+        btn_cancel = QPushButton(tr("common.cancel"))
+        btn_ok = QPushButton(tr("portfolio.confirm_import"))
+        btn_layout.addStretch()
+        btn_layout.addWidget(btn_cancel)
+        btn_layout.addWidget(btn_ok)
+        layout.addLayout(btn_layout)
+
+        btn_cancel.clicked.connect(dialog.reject)
+        btn_ok.clicked.connect(dialog.accept)
+
+        if dialog.exec() != 1:
+            return None
+
+        edited_csv = editor.toPlainText().replace("\ufeff", "").strip()
+        if not edited_csv:
+            QMessageBox.warning(self, tr("common.warning"), tr("portfolio.csv_empty_cancelled"))
+            return None
+
+        try:
+            reader = csv.DictReader(StringIO(edited_csv))
+        except Exception:
+            QMessageBox.warning(self, tr("common.warning"), tr("portfolio.manual_code_invalid_csv"))
+            return None
+
+        if not reader.fieldnames:
+            QMessageBox.warning(self, tr("common.warning"), tr("portfolio.manual_code_invalid_csv"))
+            return None
+
+        rows: list[dict] = []
+        missing_code_rows: list[int] = []
+        for idx, row in enumerate(reader, start=2):
+            if not isinstance(row, dict):
+                continue
+            name = str(row.get("name", "") or "").strip()
+            if not name:
+                continue
+
+            code = self._normalize_security_code(str(row.get("code", "") or ""))
+            if not code:
+                missing_code_rows.append(idx)
+
+            rows.append(
+                {
+                    "code": code,
+                    "name": name,
+                    "type": str(row.get("type", "ETF") or "ETF").strip() or "ETF",
+                    "amount": str(row.get("amount", "") or "").strip(),
+                    "profit": str(row.get("profit", "") or "").strip(),
+                    "cost_price": str(row.get("cost_price", "") or "").strip(),
+                    "shares": str(row.get("shares", "") or "").strip(),
+                    "account": str(row.get("account", "中信") or "中信").strip() or "中信",
+                    "status": str(row.get("status", "持有中") or "持有中").strip() or "持有中",
+                }
+            )
+
+        if missing_code_rows:
+            QMessageBox.warning(
+                self,
+                tr("common.warning"),
+                tr("portfolio.manual_code_missing_rows", rows=", ".join(str(v) for v in missing_code_rows[:10])),
+            )
+            return None
+
+        return rows
 
     def _on_import_data(self):
         from frontend.services.portfolio_service import PortfolioService

@@ -69,6 +69,68 @@ class PortfolioService:
     def ocr_normalize_csv(self, csv_text: str) -> dict:
         return self.client.post(f"{self.base_path}/ocr-normalize-csv", json={"csv_text": str(csv_text or "")})
 
+    def ocr_merge_normalize_csv(self, csv_texts: list[str]) -> dict:
+        payload = {"csv_texts": [str(t or "") for t in (csv_texts or [])]}
+        return self.client.post(f"{self.base_path}/ocr-merge-normalize-csv", json=payload)
+
+    def extract_and_merge_screenshots(
+        self,
+        file_paths: list[str],
+        progress_callback: Callable[[dict], None] | None = None,
+    ) -> dict:
+        """Extract CSV from each screenshot via Kimi OCR, then merge + normalize them
+        together with DeepSeek so that information spread across multiple screenshots
+        is consolidated into one set of holdings.
+
+        Returns {"items": [...], "csv_texts": [...]} and never raises on partial data.
+        """
+        paths = [p for p in (file_paths or []) if p]
+        csv_texts: list[str] = []
+        total = max(len(paths), 1)
+
+        for index, path in enumerate(paths, start=1):
+            try:
+                with open(path, "rb") as fh:
+                    image_base64 = base64.b64encode(fh.read()).decode("utf-8")
+            except Exception:
+                continue
+
+            if progress_callback:
+                progress_callback(
+                    {
+                        "stage": "extract_csv",
+                        "message": f"Kimi-k2.6 正在识别第 {index}/{total} 张截图",
+                        "current": index,
+                        "total": total + 1,
+                        "original_image_base64": image_base64,
+                        "segment_image_base64": image_base64,
+                        "segment_current": index,
+                        "segment_total": total,
+                    }
+                )
+
+            csv_result = self.ocr_extract_csv(image_base64)
+            csv_text = str(csv_result.get("csv_text", "") if isinstance(csv_result, dict) else "").strip()
+            if csv_text:
+                csv_texts.append(csv_text)
+
+        if progress_callback:
+            progress_callback(
+                {
+                    "stage": "normalize",
+                    "message": f"DeepSeek 正在融合 {len(csv_texts)} 张截图的信息",
+                    "current": total + 1,
+                    "total": total + 1,
+                }
+            )
+
+        if not csv_texts:
+            return {"items": [], "csv_texts": []}
+
+        merge_result = self.ocr_merge_normalize_csv(csv_texts)
+        items = list(merge_result.get("items", []) if isinstance(merge_result, dict) else [])
+        return {"items": items, "csv_texts": csv_texts}
+
     def import_from_screenshot(
         self,
         file_path: str,
@@ -94,6 +156,10 @@ class PortfolioService:
                     "message": "Kimi-k2.6 正在从截图提取 CSV",
                     "current": 1,
                     "total": 4,
+                    "original_image_base64": image_base64,
+                    "segment_image_base64": image_base64,
+                    "segment_current": 1,
+                    "segment_total": 1,
                 }
             )
 
@@ -108,6 +174,10 @@ class PortfolioService:
                     "current": 2,
                     "total": 4,
                     "csv_text": csv_text,
+                    "original_image_base64": image_base64,
+                    "segment_image_base64": image_base64,
+                    "segment_current": 1,
+                    "segment_total": 1,
                 }
             )
 
@@ -151,7 +221,7 @@ class PortfolioService:
                 }
             )
 
-        import_result = self.import_from_extracted_items(items)
+        import_result = self.import_from_extracted_items(items, allow_partial=True)
         if not isinstance(import_result, dict):
             return {"created": 0, "updated": 0, "deleted": 0, "errors": ["Invalid import result"]}
         return import_result
@@ -173,6 +243,7 @@ class PortfolioService:
         self,
         items: list[dict],
         progress_callback: Callable[[dict], None] | None = None,
+        allow_partial: bool = False,
     ) -> dict:
         result = self._post_with_retry(
             f"{self.base_path}/import-items",
@@ -184,7 +255,7 @@ class PortfolioService:
             raise RuntimeError("Invalid import response")
         valid = int(result.get("valid", 0) or 0)
         errors = list(result.get("errors", []) if isinstance(result, dict) else [])
-        if valid <= 0:
+        if valid <= 0 and not allow_partial:
             if errors:
                 raise RuntimeError(errors[0])
             raise RuntimeError("No valid holdings were imported (likely missing code/name).")
@@ -332,6 +403,34 @@ class PortfolioService:
             )
 
         result = self.import_from_csv_text(text)
+
+        valid = int(result.get("valid", 0) if isinstance(result, dict) else 0)
+        errors = [str(e) for e in (result.get("errors", []) if isinstance(result, dict) else [])]
+        missing_code_only = bool(errors) and all("missing code/name" in e.lower() for e in errors)
+
+        if valid <= 0 and missing_code_only:
+            if progress_callback:
+                progress_callback(
+                    {
+                        "stage": "normalize",
+                        "message": "Missing code detected, trying DeepSeek normalization",
+                        "current": 2,
+                        "total": 3,
+                        "csv_text": text,
+                    }
+                )
+
+            normalize_result = self.ocr_normalize_csv(text)
+            items = list(normalize_result.get("items", []) if isinstance(normalize_result, dict) else [])
+            if items:
+                result = self.import_from_extracted_items(items)
+                valid = int(result.get("valid", 0) if isinstance(result, dict) else 0)
+
+            if valid <= 0:
+                raise ValueError(
+                    "Missing security codes. Please add a code/证券代码 column manually, "
+                    "or use screenshot import so AI can infer codes from image context."
+                )
 
         if progress_callback:
             progress_callback(
