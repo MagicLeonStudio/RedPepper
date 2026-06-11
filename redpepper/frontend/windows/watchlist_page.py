@@ -759,6 +759,7 @@ class WatchlistPage(QWidget):
 
         clicked = source_dialog.clickedButton()
         service = WatchlistService()
+        use_text_mode = False
         if clicked is btn_file:
             file_path, _ = QFileDialog.getOpenFileName(
                 self,
@@ -775,8 +776,9 @@ class WatchlistPage(QWidget):
             if not csv_text:
                 QMessageBox.information(self, tr("common.info"), tr("watchlist.csv_clipboard_empty"))
                 return
-            task = service.import_from_csv_text_with_progress
+            task = service.import_from_text_with_progress
             task_arg = csv_text
+            use_text_mode = True
         else:
             return
 
@@ -786,6 +788,7 @@ class WatchlistPage(QWidget):
                 tr("watchlist.import_from_csv"),
                 task,
                 task_arg,
+                text_mode=use_text_mode,
             )
         except Exception as e:
             QMessageBox.warning(self, tr("common.error"), tr("watchlist.import_from_csv") + f": {e}")
@@ -798,9 +801,12 @@ class WatchlistPage(QWidget):
         parsed = int(result.get("parsed", 0) if isinstance(result, dict) else max(created, 0))
         invalid = int(result.get("invalid", 0) if isinstance(result, dict) else 0)
         duplicates = int(result.get("duplicates", 0) if isinstance(result, dict) else 0)
+        updated = int(result.get("updated", 0) if isinstance(result, dict) else 0)
         existing_rows_before = int(result.get("existing_rows_before", 0) if isinstance(result, dict) else 0)
         existing_unique_before = int(result.get("existing_unique_codes_before", 0) if isinstance(result, dict) else 0)
         message = tr("watchlist.import_from_csv_summary", total=total, parsed=parsed, invalid=invalid, duplicates=duplicates, created=created)
+        if updated:
+            message += "\n" + tr("watchlist.import_updated_summary", updated=updated)
         if existing_rows_before or existing_unique_before:
             message += "\n" + tr(
                 "watchlist.import_from_csv_existing_summary",

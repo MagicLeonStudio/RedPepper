@@ -30,6 +30,8 @@ class APIClient:
             "/ocr" in path
             or "/import-csv" in path
             or "/import-items" in path
+            or "/import-text" in path
+            or "/api/ai/chat" in path
             or "/import/html" in path
         ):
             return httpx.Timeout(connect=5.0, read=900.0, write=90.0, pool=60.0)

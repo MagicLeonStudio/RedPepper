@@ -225,6 +225,35 @@ redpepper/
 	- Windows Qt 插件路径引导优化
 	- 旧知识条目回读 HTML 兼容
 
+## 2026-06-11 当日增量日志（不升版本）
+
+### A. 观察池文本导入鲁棒性补强
+- 新增 `/api/watchlist/import-text`，支持同花顺等原始文本粘贴导入
+- 导入流程：宽松解析 -> DeepSeek 结构化补全 -> 入库去重/补全 -> 与持仓状态同步
+- `watchlist` 导入新增 upsert 行为：同代码命中已有记录时补齐缺失字段
+
+### B. 导入交互与超时治理
+- 文本导入进度弹窗切换为 text mode（移除截图OCR误导文案与预览）
+- 客户端对 `/import-text` 与 `/api/ai/chat` 调整为长超时，降低大批量文本与多附件请求超时失败
+
+### C. 仪表盘与 AI 对话能力
+- 修复仪表盘快捷操作“查看持仓”无效
+- 新增仪表盘“模型对话”能力：
+	- 模型：`kimi-k2.6` / `deepseek-v4-flash` / `deepseek-v4-pro`
+	- 后端：新增 `/api/ai/chat`
+	- 前端：新增 chat service 与对话弹窗
+
+### D. Chat 体验升级（现代交互）
+- 上传入口统一为“上传附件”，支持一次多选
+- 能力边界：Kimi 支持文本+图片附件；DeepSeek 支持文本附件
+- 会话区升级为左右气泡（用户右、模型左）
+- 代码块卡片化，支持“复制代码”
+- 主题色统一为主应用品牌色（紫色-黄色-西瓜红）
+
+### E. 线上错误修复
+- 修复 Kimi `invalid temperature: only 1 is allowed for this model` 导致的 gateway 报错
+- 按模型兼容性设置温度参数：Kimi=1.0，DeepSeek=0.5
+
 ## 下一版本目标（v0.0.6）
 
 ### P0（必须）

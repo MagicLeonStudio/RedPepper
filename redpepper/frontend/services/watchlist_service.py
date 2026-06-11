@@ -623,6 +623,49 @@ class WatchlistService:
             )
         return result
 
+    def import_from_text_with_progress(
+        self,
+        raw_text: str,
+        progress_callback: Callable[[dict], None] | None = None,
+    ) -> dict:
+        """Import arbitrary pasted text via the DeepSeek-powered backend endpoint.
+
+        Unlike the rigid CSV parser, this sends the raw text to the backend which
+        infers missing security codes, completes research fields, dedupes and syncs
+        status with the portfolio.
+        """
+        text = str(raw_text or "").replace("\ufeff", "").strip()
+        if not text:
+            raise ValueError("Text is empty")
+
+        if progress_callback:
+            progress_callback(
+                {
+                    "stage": "upload",
+                    "message": "DeepSeek 正在整理并补全代码…",
+                    "current": 1,
+                    "total": 2,
+                }
+            )
+
+        result = self._post_with_retry(
+            f"{self.base_path}/import-text",
+            {"text": text, "enrich": True},
+            progress_callback=progress_callback,
+            timeout_stage="importing",
+        )
+
+        if progress_callback:
+            progress_callback(
+                {
+                    "stage": "completed",
+                    "message": "Text import completed",
+                    "current": 2,
+                    "total": 2,
+                }
+            )
+        return result
+
     # ---- Aliases for frontend page compatibility ----
 
     def get_stock_watchlist(self) -> list:

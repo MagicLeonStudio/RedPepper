@@ -20,22 +20,26 @@ class OCRImportWorker(QThread):
     completed = pyqtSignal(object)
     failed = pyqtSignal(str)
 
-    def __init__(self, task: Callable[[str], object], file_path: str, parent=None):
+    def __init__(self, task: Callable[[str], object], file_path: str, parent=None, *, text_mode: bool = False):
         super().__init__(parent)
         self._task = task
         self._file_path = file_path
+        self._text_mode = text_mode
 
     def _emit_progress(self, payload: dict) -> None:
         self.progress_changed.emit(payload)
 
     def run(self) -> None:
         try:
-            self.stage_changed.emit(tr("ocr_progress.preparing_image"))
-            self.stage_changed.emit(tr("ocr_progress.uploading_image"))
-            provider_name, model_name = get_ocr_runtime_target()
-            self.stage_changed.emit(
-                tr("ocr_progress.waiting_model", provider=provider_name, model=model_name)
-            )
+            if self._text_mode:
+                self.stage_changed.emit(tr("ocr_progress.text_preparing"))
+            else:
+                self.stage_changed.emit(tr("ocr_progress.preparing_image"))
+                self.stage_changed.emit(tr("ocr_progress.uploading_image"))
+                provider_name, model_name = get_ocr_runtime_target()
+                self.stage_changed.emit(
+                    tr("ocr_progress.waiting_model", provider=provider_name, model=model_name)
+                )
             signature = inspect.signature(self._task)
             if len(signature.parameters) >= 2:
                 result = self._task(self._file_path, self._emit_progress)
@@ -47,9 +51,10 @@ class OCRImportWorker(QThread):
 
 
 class OCRProgressDialog(QDialog):
-    def __init__(self, title: str, parent=None):
+    def __init__(self, title: str, parent=None, *, text_mode: bool = False):
         super().__init__(parent)
         self._started_at = time.monotonic()
+        self._text_mode = text_mode
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._update_elapsed)
 
@@ -75,7 +80,9 @@ class OCRProgressDialog(QDialog):
             logo.setPixmap(QPixmap(str(icon_path)).scaledToHeight(64))
         layout.addWidget(logo)
 
-        self.title_label = QLabel(tr("ocr_progress.title"))
+        self.title_label = QLabel(
+            tr("ocr_progress.text_title") if self._text_mode else tr("ocr_progress.title")
+        )
         self.title_label.setObjectName("progressTitle")
         layout.addWidget(self.title_label)
 
@@ -85,7 +92,9 @@ class OCRProgressDialog(QDialog):
         self.model_label.setWordWrap(True)
         layout.addWidget(self.model_label)
 
-        self.stage_label = QLabel(tr("ocr_progress.preparing_image"))
+        self.stage_label = QLabel(
+            tr("ocr_progress.text_preparing") if self._text_mode else tr("ocr_progress.preparing_image")
+        )
         self.stage_label.setWordWrap(True)
         layout.addWidget(self.stage_label)
 
@@ -119,6 +128,11 @@ class OCRProgressDialog(QDialog):
         self.segment_counter = QLabel("")
         self.segment_counter.setWordWrap(True)
         layout.addWidget(self.segment_counter)
+
+        if self._text_mode:
+            self.original_preview.hide()
+            self.segment_preview.hide()
+            self.model_label.hide()
 
         self.csv_title = QLabel("CSV Preview")
         layout.addWidget(self.csv_title)
@@ -245,9 +259,9 @@ class OCRProgressDialog(QDialog):
         self.elapsed_label.setText(tr("ocr_progress.elapsed", seconds=elapsed_seconds))
 
 
-def run_ocr_import(parent, title: str, task: Callable[[str], object], file_path: str):
-    dialog = OCRProgressDialog(title, parent)
-    worker = OCRImportWorker(task, file_path, parent=dialog)
+def run_ocr_import(parent, title: str, task: Callable[[str], object], file_path: str, *, text_mode: bool = False):
+    dialog = OCRProgressDialog(title, parent, text_mode=text_mode)
+    worker = OCRImportWorker(task, file_path, parent=dialog, text_mode=text_mode)
     result_holder: dict[str, object] = {}
 
     worker.stage_changed.connect(dialog.set_stage)

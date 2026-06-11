@@ -145,6 +145,185 @@ def _parse_watchlist_text(raw_text: str) -> list[OCRWatchlistItem]:
     return items
 
 
+_PURE_INDEX_NAMES = {
+    "上证指数",
+    "上证综指",
+    "深证成指",
+    "深成指",
+    "创业板指",
+    "创业板综",
+    "沪深300",
+    "中证500",
+    "中证1000",
+    "中证2000",
+    "北证50",
+    "上证50",
+    "科创50",
+    "科创100",
+    "恒生指数",
+    "恒生科技指数",
+    "国企指数",
+    "道琼斯",
+    "纳斯达克",
+    "纳斯达克指数",
+    "标普500",
+    "日经225",
+}
+_WATCHLIST_HEADER_TOKENS = ("最新价", "现价", "涨幅", "涨跌", "成交", "市值", "换手", "振幅")
+
+
+def _looks_like_number(text: str) -> bool:
+    raw = str(text or "").strip().replace("%", "").replace(",", "").replace("+", "")
+    if not raw:
+        return False
+    try:
+        float(raw)
+        return True
+    except ValueError:
+        return False
+
+
+def _is_pure_index_name(name: str) -> bool:
+    n = str(name or "").strip()
+    if not n:
+        return False
+    low = n.lower()
+    if "etf" in low or "lof" in low or "基金" in n:
+        return False
+    if n in _PURE_INDEX_NAMES:
+        return True
+    if n.endswith("指数"):
+        return True
+    return False
+
+
+def _parse_watchlist_freeform_rows(raw_text: str) -> list[dict]:
+    """Parse arbitrary pasted text (e.g. 同花顺/东方财富 自选股列表) into name/code rows.
+
+    Handles broker exports that contain only a name column (no security code),
+    extra price/percent columns, headers, and pure index summary rows.  The
+    inferred codes are filled in later by DeepSeek.
+    """
+    rows: list[dict] = []
+    seen: set[str] = set()
+
+    for raw_line in str(raw_text or "").splitlines():
+        line = str(raw_line or "").strip()
+        if not line:
+            continue
+
+        parts = [p.strip() for p in re.split(r"[,\t;，、]|\s*\|\s*|\s{2,}", line) if p.strip()]
+        if not parts:
+            continue
+
+        name = ""
+        code = ""
+        for part in parts:
+            match = _SECURITY_CODE_RE.search(part)
+            if match and not code:
+                code = match.group(1)
+            if not name and re.search(r"[\u4e00-\u9fffA-Za-z]", part) and not _looks_like_number(part):
+                name = part
+
+        cleaned_name = _SECURITY_CODE_RE.sub("", name).strip(" -:|()（）") or name
+        cleaned_name = cleaned_name.strip()
+        if not cleaned_name and not code:
+            continue
+
+        low = cleaned_name.lower()
+        if any(token in cleaned_name for token in _WATCHLIST_HEADER_TOKENS):
+            continue
+        if low in {"name", "code", "代码", "名称", "股票名称", "基金名称", "股票/基金名称"}:
+            continue
+        if _is_pure_index_name(cleaned_name):
+            continue
+
+        key = code or cleaned_name
+        if key in seen:
+            continue
+        seen.add(key)
+        rows.append({"code": code, "name": cleaned_name})
+
+    return rows
+
+
+async def _normalize_watchlist_rows_with_deepseek(raw_text: str, rows: list[dict]) -> list[dict]:
+    """Use DeepSeek to infer 6-digit codes from names and complete research fields."""
+    if not rows:
+        return []
+
+    settings.reload()
+    deepseek_cfg = settings.get("ai.providers.deepseek") or {}
+    deepseek_key = str(deepseek_cfg.get("api_key", "") or "").strip()
+    if not deepseek_key:
+        return rows
+
+    provider = get_provider("deepseek")
+    seed = [{"code": str(r.get("code", "") or ""), "name": str(r.get("name", "") or "")} for r in rows]
+    prompt = (
+        "你是 A 股观察池结构化清洗助手。根据给出的标的名称（可能缺少代码），"
+        "推断每个标的的 6 位证券代码，并补全研究信息，输出可直接入库的 JSON 数组。"
+        "每项字段固定为：code,name,type,sector,reason,trigger_condition,rating,status。\n"
+        "规则：\n"
+        "1) code 必须是 6 位数字，依据名称和 A 股/ETF/基金常识推断"
+        "（如 科创50ETF→588000、恒生科技ETF→513130、纳指ETF→513100）；无法确定时返回空字符串；\n"
+        "2) name 使用规范全称；\n"
+        "3) type 只能是 股票/ETF/基金；\n"
+        "4) sector 为行业或主题，尽量简短；\n"
+        "5) reason 为观察理由，20~40 字；\n"
+        "6) trigger_condition 给出可执行触发条件（估值阈值、趋势、成交量等）；\n"
+        "7) rating 只返回 A/B/C/D 之一；\n"
+        "8) status 固定为 观察；\n"
+        "9) 丢弃纯指数行（如 上证指数、创业板指、深证成指）；\n"
+        "10) 若多行名称相似且指同一标的，合并为一行，保留更完整的名称；\n"
+        "11) 只返回 JSON，不要解释。\n\n"
+        f"原始文本:\n{raw_text}\n\n"
+        f"初步解析:\n{json.dumps(seed, ensure_ascii=False)}"
+    )
+
+    try:
+        raw = await asyncio.wait_for(
+            provider.chat(
+                [{"role": "user", "content": prompt}],
+                model="deepseek-v4-flash",
+                temperature=0.3,
+            ),
+            timeout=120,
+        )
+        payload = json.loads(extract_json_block(raw))
+    except Exception:
+        payload = rows
+
+    if isinstance(payload, dict):
+        payload = payload.get("items", [])
+    if not isinstance(payload, list):
+        payload = rows
+
+    normalized: list[dict] = []
+    for row in payload:
+        if not isinstance(row, dict):
+            continue
+        name = _clean_text(row.get("name", ""), max_length=100)
+        if not name or _is_pure_index_name(name):
+            continue
+        normalized.append(
+            {
+                "code": _extract_security_code(row) or _clean_text(row.get("code", ""), max_length=20),
+                "name": name,
+                "type": _normalize_watchlist_type(row.get("type") or _infer_watchlist_type(row)),
+                "sector": _clean_text(row.get("sector", "") or row.get("industry", ""), max_length=50),
+                "reason": _clean_text(row.get("reason", "")),
+                "trigger_condition": _clean_text(
+                    row.get("trigger_condition", "") or row.get("condition", ""), max_length=200
+                ),
+                "rating": _sanitize_rating(str(row.get("rating") or "⭐⭐⭐")),
+                "status": _normalize_watchlist_status(row.get("status") or "观察"),
+            }
+        )
+
+    return normalized or rows
+
+
 def _sanitize_rating(value: str) -> str:
     text = str(value or "").strip()
     if not text:
@@ -493,21 +672,66 @@ def _normalize_ocr_item(raw: dict) -> OCRWatchlistItem:
     )
 
 
-async def _import_watchlist_rows(rows: list[dict], db: Session, *, enrich: bool = True) -> dict:
+def _merge_ocr_items(base: OCRWatchlistItem, extra: OCRWatchlistItem) -> OCRWatchlistItem:
+    """Fill empty fields of ``base`` with values from ``extra`` (partial completion)."""
+    return base.model_copy(
+        update={
+            "name": base.name if (base.name and len(base.name) >= len(extra.name or "")) else (extra.name or base.name),
+            "type": base.type or extra.type,
+            "sector": base.sector or extra.sector,
+            "reason": base.reason or extra.reason,
+            "trigger_condition": base.trigger_condition or extra.trigger_condition,
+            "rating": base.rating or extra.rating,
+            "status": base.status or extra.status,
+        }
+    )
+
+
+def _complete_watchlist_item(db_item: Watchlist, item: OCRWatchlistItem) -> bool:
+    """Complete empty fields on an existing watchlist row from a new item. Returns True if changed."""
+    changed = False
+
+    def _fill(attr: str, value: object, *, max_length: int | None = None) -> None:
+        nonlocal changed
+        text = _clean_text(value, max_length=max_length)
+        if not text:
+            return
+        if not str(getattr(db_item, attr, "") or "").strip():
+            setattr(db_item, attr, text)
+            changed = True
+
+    _fill("name", item.name, max_length=100)
+    _fill("sector", item.sector, max_length=50)
+    _fill("reason", item.reason)
+    _fill("trigger_condition", item.trigger_condition, max_length=200)
+
+    new_rating = _sanitize_rating(str(item.rating or ""))
+    if new_rating and not str(getattr(db_item, "rating", "") or "").strip():
+        db_item.rating = new_rating
+        changed = True
+
+    return changed
+
+
+async def _import_watchlist_rows(
+    rows: list[dict], db: Session, *, enrich: bool = True, upsert: bool = False
+) -> dict:
     total_rows = 0
     invalid_rows = 0
     duplicate_rows = 0
+    updated_rows = 0
     errors: list[str] = []
 
-    existing_codes = {
-        str(code or "").strip()
-        for (code,) in db.query(Watchlist.code).all()
-        if str(code or "").strip()
-    }
+    existing_by_code: dict[str, Watchlist] = {}
+    for watch in db.query(Watchlist).all():
+        code = str(watch.code or "").strip()
+        if code and code not in existing_by_code:
+            existing_by_code[code] = watch
+    existing_codes = set(existing_by_code.keys())
     existing_unique_codes_before = len(existing_codes)
     existing_rows_before = int(db.query(Watchlist).count())
-    batch_seen_codes: set[str] = set()
-    normalized_items: list[OCRWatchlistItem] = []
+    batch_items: dict[str, OCRWatchlistItem] = {}
+    updated_codes: set[str] = set()
 
     for row_num, row in enumerate(rows, start=1):
         total_rows += 1
@@ -522,12 +746,23 @@ async def _import_watchlist_rows(rows: list[dict], db: Session, *, enrich: bool 
             errors.append(f"Row {row_num}: missing code/name")
             continue
 
-        if item.code in existing_codes or item.code in batch_seen_codes:
-            duplicate_rows += 1
+        if item.code in existing_codes:
+            if upsert and _complete_watchlist_item(existing_by_code[item.code], item):
+                updated_rows += 1
+                updated_codes.add(item.code)
+            else:
+                duplicate_rows += 1
             continue
 
-        batch_seen_codes.add(item.code)
-        normalized_items.append(item)
+        if item.code in batch_items:
+            duplicate_rows += 1
+            if upsert:
+                batch_items[item.code] = _merge_ocr_items(batch_items[item.code], item)
+            continue
+
+        batch_items[item.code] = item
+
+    normalized_items: list[OCRWatchlistItem] = list(batch_items.values())
 
     if enrich and normalized_items:
         try:
@@ -537,7 +772,7 @@ async def _import_watchlist_rows(rows: list[dict], db: Session, *, enrich: bool 
             errors.append(f"enrichment skipped: {exc}")
 
     created_items: list[Watchlist] = []
-    imported_codes = set(batch_seen_codes)
+    imported_codes = set(batch_items.keys()) | updated_codes
     for item in normalized_items:
         try:
             db_item = Watchlist(
@@ -571,6 +806,7 @@ async def _import_watchlist_rows(rows: list[dict], db: Session, *, enrich: bool 
         "parsed": len(normalized_items),
         "invalid": invalid_rows,
         "duplicates": duplicate_rows,
+        "updated": updated_rows,
         "created": len(created_items),
         "linked": linked,
         "existing_rows_before": existing_rows_before,
@@ -1027,6 +1263,39 @@ async def watchlist_import_items(request: dict, db: Session = Depends(get_db)) -
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="items must be a list")
     enrich = bool(request.get("enrich", True))
     return await _import_watchlist_rows(rows, db, enrich=enrich)
+
+
+@router.post("/import-text")
+async def watchlist_import_text(request: dict, db: Session = Depends(get_db)) -> dict:
+    """Import raw pasted text (e.g. 同花顺 自选股列表) into the watchlist.
+
+    The text is parsed leniently, normalized by DeepSeek (which infers missing
+    6-digit codes and research fields), then imported with duplicate detection,
+    partial-entry completion and status sync against the portfolio.
+    """
+    raw_text = str(request.get("text", "") or "")
+    if not raw_text.strip():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="text is required")
+
+    rows = _parse_watchlist_freeform_rows(raw_text)
+    if not rows:
+        return {
+            "total": 0,
+            "parsed": 0,
+            "invalid": 0,
+            "duplicates": 0,
+            "updated": 0,
+            "created": 0,
+            "linked": 0,
+            "existing_rows_before": int(db.query(Watchlist).count()),
+            "existing_unique_codes_before": 0,
+            "errors": ["No recognizable securities found in text"],
+            "items": [],
+        }
+
+    normalized = await _normalize_watchlist_rows_with_deepseek(raw_text, rows)
+    enrich = bool(request.get("enrich", True))
+    return await _import_watchlist_rows(normalized, db, enrich=enrich, upsert=True)
 
 
 @router.get("/{id}", response_model=WatchlistResponse)

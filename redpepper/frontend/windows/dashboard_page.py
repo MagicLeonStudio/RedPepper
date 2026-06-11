@@ -5,7 +5,7 @@ from PyQt6.QtWidgets import (
     QProgressBar, QPushButton, QGridLayout, QFrame, QSpacerItem,
     QSizePolicy
 )
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QFont
 
 from frontend.i18n.translator import tr
@@ -68,6 +68,8 @@ class StatCard(QGroupBox):
 
 class DashboardPage(QWidget):
     """Overview dashboard page with key metrics."""
+
+    navigate_requested = pyqtSignal(str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -251,6 +253,7 @@ class DashboardPage(QWidget):
                 background-color: #F37A90;
             }}
         """)
+        btn_view.clicked.connect(self._on_view_portfolio)
         actions_layout.addWidget(btn_view)
 
         btn_check = QPushButton("🔍 " + tr("dashboard.trade_check"))
@@ -267,11 +270,38 @@ class DashboardPage(QWidget):
                 background-color: #3A3A4E;
             }}
         """)
+        btn_check.clicked.connect(self._on_trade_check)
         actions_layout.addWidget(btn_check)
+
+        btn_ai_chat = QPushButton("💬 " + tr("dashboard.ai_chat"))
+        btn_ai_chat.setStyleSheet(f"""
+            QPushButton {{
+                background-color: #2A2A3E;
+                color: {TEXT_PRIMARY};
+                border: 1px solid {BORDER_COLOR};
+                border-radius: 8px;
+                padding: 10px 20px;
+                font-size: 13px;
+            }}
+            QPushButton:hover {{
+                background-color: #3A3A4E;
+            }}
+        """)
+        btn_ai_chat.clicked.connect(self._on_ai_chat)
+        actions_layout.addWidget(btn_ai_chat)
         actions_layout.addStretch()
 
         layout.addWidget(actions_box)
         layout.addStretch()
+
+    def _on_view_portfolio(self):
+        self.navigate_requested.emit("portfolio")
+
+    def _on_trade_check(self):
+        self.navigate_requested.emit("trade_log")
+
+    def _on_ai_chat(self):
+        self.navigate_requested.emit("ai_chat")
 
     def refresh_data(self):
         """Public refresh hook used by other pages/window after holdings change."""

@@ -10,6 +10,7 @@ from PyQt6.QtGui import QFont, QIcon, QPixmap
 from frontend.app_meta import APP_VERSION, full_logo_path, logo_icon_path
 from frontend.i18n.translator import tr
 from frontend.widgets.language_switcher import LanguageSwitcher
+from frontend.widgets.ai_chat_dialog import AIChatDialog
 from frontend.windows.dashboard_page import DashboardPage
 from frontend.windows.portfolio_page import PortfolioPage
 from frontend.windows.watchlist_page import WatchlistPage
@@ -92,6 +93,7 @@ class MainWindow(QMainWindow):
 
         self._nav_buttons = []
         self._pages = {}
+        self._page_index_by_key = {}
 
         self._build_ui()
         self._setup_status_check()
@@ -126,6 +128,7 @@ class MainWindow(QMainWindow):
         self.settings_page = SettingsPage()
 
         self.portfolio_page.data_changed.connect(self.dashboard_page.refresh_data)
+        self.dashboard_page.navigate_requested.connect(self._on_dashboard_navigate)
 
         self._add_page("dashboard", self.dashboard_page, "📊", tr("nav.dashboard"))
         self._add_page("portfolio", self.portfolio_page, "📈", tr("nav.portfolio"))
@@ -219,6 +222,7 @@ class MainWindow(QMainWindow):
     def _add_page(self, key: str, page, icon: str, text: str):
         """Add a page to the stacked widget."""
         self._pages[key] = page
+        self._page_index_by_key[key] = self.stack.count()
         self.stack.addWidget(page)
 
     def _select_page(self, index: int):
@@ -229,6 +233,20 @@ class MainWindow(QMainWindow):
 
         if index == 0 and hasattr(self, "dashboard_page"):
             self.dashboard_page.refresh_data()
+
+    def _on_dashboard_navigate(self, page_key: str):
+        """Navigate from dashboard quick actions to a target page."""
+        if page_key == "ai_chat":
+            self._open_ai_chat_dialog()
+            return
+        target_index = self._page_index_by_key.get(page_key)
+        if target_index is None:
+            return
+        self._select_page(target_index)
+
+    def _open_ai_chat_dialog(self):
+        dialog = AIChatDialog(self)
+        dialog.exec()
 
     def _on_locale_changed(self, locale: str):
         """Handle language change."""

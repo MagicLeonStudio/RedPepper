@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from backend.app.database import init_db
 from backend.app.routers import (
+    ai_chat,
     auth,
     briefing,
     data_manager,
@@ -50,6 +51,7 @@ async def startup() -> None:
 # Routers
 # ------------------------------------------------------------------ #
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
+app.include_router(ai_chat.router, prefix="/api/ai", tags=["ai"])
 app.include_router(portfolio.router, prefix="/api/portfolio", tags=["portfolio"])
 app.include_router(watchlist.router, prefix="/api/watchlist", tags=["watchlist"])
 app.include_router(trade_log.router, prefix="/api/trade-log", tags=["trade-log"])
