@@ -9,10 +9,14 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from backend.app.dependencies import get_db
-from backend.app.models import Briefing, EventCalendar
+from backend.app.models import Briefing, BriefingRun, EventCalendar
+from backend.app.services import build_briefing_context, generate_briefing, run_due_briefings
 from backend.app.schemas import (
     BriefingCreate,
+    BriefingGenerateRequest,
+    BriefingGenerateResponse,
     BriefingResponse,
+    BriefingRunResponse,
     BriefingUpdate,
     EventCalendarCreate,
     EventCalendarResponse,
@@ -287,6 +291,54 @@ async def list_briefings(db: Session = Depends(get_db)) -> list[Briefing]:
 @router.get("/events", response_model=list[EventCalendarResponse])
 async def list_events(db: Session = Depends(get_db)) -> list[EventCalendar]:
     return db.query(EventCalendar).order_by(EventCalendar.date.asc()).all()
+
+
+@router.get("/context-preview")
+async def get_briefing_context_preview(
+    date: str | None = None,
+    session_type: str = "manual",
+    db: Session = Depends(get_db),
+) -> dict:
+    try:
+        return build_briefing_context(db=db, target_date=date, session_type=session_type)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+
+@router.get("/runs", response_model=list[BriefingRunResponse])
+async def list_briefing_runs(db: Session = Depends(get_db)) -> list[BriefingRun]:
+    return db.query(BriefingRun).order_by(BriefingRun.created_at.desc(), BriefingRun.id.desc()).limit(50).all()
+
+
+@router.post("/generate", response_model=BriefingGenerateResponse)
+async def generate_briefing_endpoint(
+    request: BriefingGenerateRequest,
+    db: Session = Depends(get_db),
+) -> dict:
+    try:
+        return await generate_briefing(
+            db=db,
+            target_date=request.date,
+            session_type=request.session_type,
+            provider_or_model=request.provider,
+            trigger_type=request.trigger_type,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Briefing generation failed: {exc}") from exc
+
+
+@router.post("/run-due")
+async def run_due_briefings_endpoint(request: dict | None = None, db: Session = Depends(get_db)) -> dict:
+    payload = request or {}
+    provider = str(payload.get("provider", "") or "").strip() or None
+    try:
+        return await run_due_briefings(db=db, provider_or_model=provider)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"Briefing auto-run failed: {exc}") from exc
 
 
 @router.post("/events", status_code=status.HTTP_201_CREATED, response_model=EventCalendarResponse)

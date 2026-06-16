@@ -4,7 +4,7 @@ from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,
     QPushButton, QStackedWidget, QLabel, QFrame, QStatusBar
 )
-from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtCore import Qt, QThread, QTimer, pyqtSignal
 from PyQt6.QtGui import QFont, QIcon, QPixmap
 
 from frontend.app_meta import APP_VERSION, full_logo_path, logo_icon_path
@@ -28,6 +28,22 @@ TEXT_SECONDARY = "#7A7A9E"
 BRAND_RED = "#F05C77"
 ACCENT_PURPLE = "#8B5CF6"
 BORDER_COLOR = "#338B5CF6"
+
+
+class AutoBriefingWorker(QThread):
+    """Background worker for due briefing checks."""
+
+    finished_signal = pyqtSignal(dict)
+    error_signal = pyqtSignal(str)
+
+    def run(self):
+        try:
+            from frontend.services.briefing_service import BriefingService
+
+            result = BriefingService().run_due()
+            self.finished_signal.emit(result if isinstance(result, dict) else {})
+        except Exception as exc:
+            self.error_signal.emit(str(exc))
 
 
 class NavButton(QPushButton):
@@ -94,9 +110,12 @@ class MainWindow(QMainWindow):
         self._nav_buttons = []
         self._pages = {}
         self._page_index_by_key = {}
+        self._backend_connected = False
+        self._auto_briefing_worker = None
 
         self._build_ui()
         self._setup_status_check()
+        self._setup_auto_briefing_check()
         self._select_page(0)
 
     def _build_ui(self):
@@ -267,6 +286,55 @@ class MainWindow(QMainWindow):
         self._status_timer.start(10000)  # every 10 seconds
         QTimer.singleShot(2000, self._check_backend_status)
 
+    def _setup_auto_briefing_check(self):
+        """Setup periodic automatic due briefing check."""
+        self._auto_briefing_timer = QTimer(self)
+        self._auto_briefing_timer.timeout.connect(self._check_auto_briefing_due)
+        self._auto_briefing_timer.start(300000)
+        QTimer.singleShot(5000, self._check_auto_briefing_due)
+
+    def _check_auto_briefing_due(self):
+        """Run auto briefing generation checks in the background."""
+        if not self._backend_connected:
+            return
+        if self._auto_briefing_worker and self._auto_briefing_worker.isRunning():
+            return
+
+        worker = AutoBriefingWorker(self)
+        worker.finished_signal.connect(self._on_auto_briefing_finished)
+        worker.error_signal.connect(self._on_auto_briefing_error)
+        worker.finished.connect(worker.deleteLater)
+        self._auto_briefing_worker = worker
+        worker.start()
+
+    def _on_auto_briefing_finished(self, result: dict):
+        """Handle auto briefing check completion."""
+        self._auto_briefing_worker = None
+        status = str(result.get("status", "") or "")
+        if status != "generated":
+            return
+
+        try:
+            if hasattr(self, "briefing_page"):
+                self.briefing_page._load_data()
+        except Exception:
+            pass
+
+        session_type = str(result.get("session_type", "") or "")
+        title = "自动简报已生成"
+        if session_type == "open":
+            title = "已自动生成开盘简报"
+        elif session_type == "midday":
+            title = "已自动生成午间简报"
+        elif session_type == "close":
+            title = "已自动生成收盘简报"
+        self.status_bar.showMessage(title, 10000)
+
+    def _on_auto_briefing_error(self, message: str):
+        """Handle auto briefing background errors."""
+        self._auto_briefing_worker = None
+        self.status_bar.showMessage(f"自动简报检查失败：{message}", 8000)
+
     def _check_backend_status(self):
         """Check if backend is running."""
         try:
@@ -277,11 +345,14 @@ class MainWindow(QMainWindow):
             )
             with urllib.request.urlopen(req, timeout=3) as resp:
                 if resp.status == 200:
+                    self._backend_connected = True
                     self._status_label.setText(tr("status.backend_connected"))
                     self._status_label.setStyleSheet("color: #8B6FD6;")
                 else:
+                    self._backend_connected = False
                     self._status_label.setText(tr("status.backend_error"))
                     self._status_label.setStyleSheet("color: #F05C77;")
         except Exception:
+            self._backend_connected = False
             self._status_label.setText(tr("status.backend_disconnected"))
             self._status_label.setStyleSheet("color: #F05C77;")

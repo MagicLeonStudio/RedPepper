@@ -32,6 +32,7 @@ class APIClient:
             or "/import-items" in path
             or "/import-text" in path
             or "/api/ai/chat" in path
+            or "/api/briefing/generate" in path
             or "/import/html" in path
         ):
             return httpx.Timeout(connect=5.0, read=900.0, write=90.0, pool=60.0)

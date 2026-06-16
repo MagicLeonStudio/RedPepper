@@ -15,6 +15,25 @@ class BriefingService:
         item = self.client.post(f"{self.base_path}/", json=payload)
         return self._normalize_item(item)
 
+    def generate(self, session_type: str, date: str | None = None, provider: str | None = None) -> dict:
+        payload = {
+            "session_type": session_type,
+            "date": date,
+            "provider": provider,
+            "trigger_type": "manual",
+        }
+        result = self.client.post(f"{self.base_path}/generate", json=payload)
+        if isinstance(result.get("briefing"), dict):
+            result["briefing"] = self._normalize_item(result["briefing"])
+        return result
+
+    def run_due(self, provider: str | None = None) -> dict:
+        payload = {"provider": provider}
+        result = self.client.post(f"{self.base_path}/run-due", json=payload)
+        if isinstance(result.get("briefing"), dict):
+            result["briefing"] = self._normalize_item(result["briefing"])
+        return result
+
     def import_from_agi2rich_html(self, file_path: str) -> dict:
         return self.client.post(f"{self.base_path}/import/agi2rich-html", json={"file_path": file_path})
 
@@ -34,6 +53,10 @@ class BriefingService:
     def get_events(self) -> list:
         result = self.client.get(f"{self.base_path}/events")
         return [self._normalize_event(item) for item in result]
+
+    def get_runs(self) -> list:
+        result = self.client.get(f"{self.base_path}/runs")
+        return [self._normalize_run(item) for item in result]
 
     def add_event(self, data: dict) -> dict:
         payload = self._to_event_payload(data)
@@ -60,6 +83,16 @@ class BriefingService:
     def _normalize_event(self, item: dict) -> dict:
         normalized = dict(item)
         normalized["title"] = normalized.get("description", "") or ""
+        return normalized
+
+    def _normalize_run(self, item: dict) -> dict:
+        normalized = dict(item)
+        normalized["session_label"] = {
+            "open": "开盘",
+            "midday": "午间",
+            "close": "收盘",
+            "manual": "手动",
+        }.get(str(normalized.get("session_type", "") or ""), str(normalized.get("session_type", "") or "-"))
         return normalized
 
     def _to_event_payload(self, data: dict) -> dict:

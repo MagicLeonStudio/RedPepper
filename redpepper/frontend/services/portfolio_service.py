@@ -405,8 +405,26 @@ class PortfolioService:
         result = self.import_from_csv_text(text)
 
         valid = int(result.get("valid", 0) if isinstance(result, dict) else 0)
+        created = int(result.get("created", 0) if isinstance(result, dict) else 0)
         errors = [str(e) for e in (result.get("errors", []) if isinstance(result, dict) else [])]
         missing_code_only = bool(errors) and all("missing code/name" in e.lower() for e in errors)
+
+        if valid <= 0 and created <= 0 and not missing_code_only:
+            if progress_callback:
+                progress_callback(
+                    {
+                        "stage": "normalize",
+                        "message": "CSV rows were not importable, retrying as broker text",
+                        "current": 2,
+                        "total": 3,
+                        "csv_text": text,
+                    }
+                )
+
+            result = self.import_from_text(text)
+            valid = int(result.get("valid", 0) if isinstance(result, dict) else 0)
+            created = int(result.get("created", 0) if isinstance(result, dict) else 0)
+            errors = [str(e) for e in (result.get("errors", []) if isinstance(result, dict) else [])]
 
         if valid <= 0 and missing_code_only:
             if progress_callback:

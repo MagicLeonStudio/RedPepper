@@ -1,7 +1,7 @@
 """RedPepper SQLAlchemy ORM models.
 
-Defines 9 core entities: User, Portfolio, Watchlist, TradeLog, Briefing,
-Diary, Knowledge, DataBackup, and EventCalendar.
+Defines core entities for users, assets, logs, briefings, diaries, knowledge,
+backups, and event calendars.
 """
 
 from __future__ import annotations
@@ -135,11 +135,44 @@ class Briefing(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     date = Column(String(10), nullable=False)
     title = Column(String(200), nullable=False)
+    session_type = Column(String(20), default="manual", nullable=False)
+    source = Column(String(20), default="manual", nullable=False)
+    provider = Column(String(50), nullable=True)
+    model = Column(String(100), nullable=True)
+    status = Column(String(20), default="success", nullable=False)
     overseas = Column(Text, nullable=True)
     domestic = Column(Text, nullable=True)
     market = Column(Text, nullable=True)
     summary = Column(String(500), nullable=True)
     holdings = Column(Text, nullable=True)
+    created_at = Column(DateTime, server_default=func.now(), nullable=False)
+    updated_at = Column(
+        DateTime,
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+
+class BriefingRun(Base):
+    """Execution log for automated briefing generation."""
+
+    __tablename__ = "briefing_runs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    date = Column(String(10), nullable=False)
+    session_type = Column(String(20), nullable=False)
+    trigger_type = Column(String(20), default="manual", nullable=False)
+    source = Column(String(20), default="auto", nullable=False)
+    provider = Column(String(50), nullable=True)
+    model = Column(String(100), nullable=True)
+    status = Column(String(20), default="pending", nullable=False)
+    retry_count = Column(Integer, default=0, nullable=False)
+    context_payload = Column(Text, nullable=True)
+    result_payload = Column(Text, nullable=True)
+    error_message = Column(Text, nullable=True)
+    started_at = Column(DateTime, server_default=func.now(), nullable=False)
+    finished_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
 
 

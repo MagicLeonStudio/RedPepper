@@ -1,5 +1,7 @@
 """Daily Briefing Page."""
 
+import json
+
 from PyQt6.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -114,6 +116,8 @@ class BriefingPage(QWidget):
         super().__init__(parent)
         self._briefings = []
         self._events = []
+        self._runs = []
+        self._visible_runs = []
         self._event_count_by_date = {}
         self._build_ui()
         self._load_data()
@@ -162,6 +166,54 @@ class BriefingPage(QWidget):
         """)
         btn_refresh.clicked.connect(self._load_data)
         top_bar.addWidget(btn_refresh)
+
+        btn_open = QPushButton("🌅 " + tr("briefing.generate_open"))
+        btn_open.setStyleSheet(f"""
+            QPushButton {{
+                background-color: #2563EB;
+                color: #FFFFFF;
+                border: none;
+                border-radius: 8px;
+                padding: 8px 14px;
+                font-size: 12px;
+                font-weight: bold;
+            }}
+            QPushButton:hover {{ background-color: #3B82F6; }}
+        """)
+        btn_open.clicked.connect(lambda: self._generate_briefing("open"))
+        top_bar.addWidget(btn_open)
+
+        btn_midday = QPushButton("☀️ " + tr("briefing.generate_midday"))
+        btn_midday.setStyleSheet(f"""
+            QPushButton {{
+                background-color: #D97706;
+                color: #FFFFFF;
+                border: none;
+                border-radius: 8px;
+                padding: 8px 14px;
+                font-size: 12px;
+                font-weight: bold;
+            }}
+            QPushButton:hover {{ background-color: #F59E0B; }}
+        """)
+        btn_midday.clicked.connect(lambda: self._generate_briefing("midday"))
+        top_bar.addWidget(btn_midday)
+
+        btn_close = QPushButton("🌙 " + tr("briefing.generate_close"))
+        btn_close.setStyleSheet(f"""
+            QPushButton {{
+                background-color: #7C3AED;
+                color: #FFFFFF;
+                border: none;
+                border-radius: 8px;
+                padding: 8px 14px;
+                font-size: 12px;
+                font-weight: bold;
+            }}
+            QPushButton:hover {{ background-color: #8B5CF6; }}
+        """)
+        btn_close.clicked.connect(lambda: self._generate_briefing("close"))
+        top_bar.addWidget(btn_close)
 
         btn_manual = QPushButton("📝 " + tr("briefing.manual_record"))
         btn_manual.setStyleSheet(f"""
@@ -290,6 +342,74 @@ class BriefingPage(QWidget):
 
         right_layout.addWidget(detail_box)
 
+        run_box = QGroupBox(tr("briefing.run_status"))
+        run_box.setStyleSheet(GROUPBOX_STYLE)
+        run_layout = QVBoxLayout(run_box)
+
+        self.run_status_label = QLabel(tr("briefing.run_status_empty"))
+        self.run_status_label.setWordWrap(True)
+        self.run_status_label.setStyleSheet(f"color: {TEXT_SECONDARY};")
+        run_layout.addWidget(self.run_status_label)
+
+        self.run_list = QListWidget()
+        self.run_list.setStyleSheet(f"""
+            QListWidget {{
+                background-color: {BG_DARK};
+                color: {TEXT_PRIMARY};
+                border: 1px solid {BORDER_COLOR};
+                border-radius: 6px;
+                padding: 4px;
+                min-height: 120px;
+            }}
+            QListWidget::item {{
+                padding: 6px;
+                border-bottom: 1px solid {BORDER_COLOR};
+            }}
+        """)
+        self.run_list.itemSelectionChanged.connect(self._update_run_action_buttons)
+        run_layout.addWidget(self.run_list)
+
+        run_action_row = QHBoxLayout()
+        run_action_row.setSpacing(8)
+
+        self.btn_view_run_context = QPushButton(tr("briefing.view_run_context"))
+        self.btn_view_run_context.setStyleSheet(f"""
+            QPushButton {{
+                background-color: #2563EB;
+                color: #FFFFFF;
+                border: none;
+                border-radius: 8px;
+                padding: 8px 12px;
+                font-size: 12px;
+                font-weight: bold;
+            }}
+            QPushButton:hover {{ background-color: #3B82F6; }}
+            QPushButton:disabled {{ background-color: #334155; color: #94A3B8; }}
+        """)
+        self.btn_view_run_context.clicked.connect(self._show_selected_run_context)
+        run_action_row.addWidget(self.btn_view_run_context)
+
+        self.btn_view_run_detail = QPushButton(tr("briefing.view_run_detail"))
+        self.btn_view_run_detail.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {ACCENT_PURPLE};
+                color: #FFFFFF;
+                border: none;
+                border-radius: 8px;
+                padding: 8px 12px;
+                font-size: 12px;
+                font-weight: bold;
+            }}
+            QPushButton:hover {{ background-color: #A78BFA; }}
+            QPushButton:disabled {{ background-color: #334155; color: #94A3B8; }}
+        """)
+        self.btn_view_run_detail.clicked.connect(self._show_selected_run_detail)
+        run_action_row.addWidget(self.btn_view_run_detail)
+
+        run_layout.addLayout(run_action_row)
+
+        right_layout.addWidget(run_box)
+
         right_layout.addStretch(1)
 
         splitter.addWidget(right_widget)
@@ -304,9 +424,11 @@ class BriefingPage(QWidget):
             svc = BriefingService()
             self._briefings = svc.get_briefings()
             self._events = svc.get_events()
+            self._runs = svc.get_runs()
         except Exception:
             self._briefings = []
             self._events = []
+            self._runs = []
 
         self._event_count_by_date = {}
         for evt in self._events:
@@ -316,6 +438,7 @@ class BriefingPage(QWidget):
 
         self._refresh_history()
         self._refresh_today_card()
+        self._refresh_runs()
 
         if self._briefings:
             self.history_table.selectRow(0)
@@ -359,6 +482,41 @@ class BriefingPage(QWidget):
                 cell.setFlags(cell.flags() & ~Qt.ItemFlag.ItemIsEditable)
                 self.history_table.setItem(row, col, cell)
 
+    def _refresh_runs(self):
+        self.run_list.clear()
+        self._visible_runs = []
+        if not self._runs:
+            self.run_status_label.setText(tr("briefing.run_status_empty"))
+            self.run_list.addItem(QListWidgetItem(tr("briefing.run_list_empty")))
+            self._update_run_action_buttons()
+            return
+
+        latest = self._runs[0]
+        latest_text = tr(
+            "briefing.run_status_latest",
+            latest.get("session_label", "-"),
+            latest.get("status", "-"),
+            latest.get("created_at", "-") or "-",
+        )
+        if latest.get("error_message"):
+            latest_text += "\n" + tr("briefing.run_status_error", latest.get("error_message", ""))
+        self.run_status_label.setText(latest_text)
+
+        self._visible_runs = list(self._runs[:8])
+        for item in self._visible_runs:
+            text = tr(
+                "briefing.run_list_item",
+                item.get("date", "-"),
+                item.get("session_label", "-"),
+                item.get("status", "-"),
+            )
+            if item.get("error_message"):
+                text += " | " + str(item.get("error_message", ""))
+            self.run_list.addItem(QListWidgetItem(text))
+        if self._visible_runs:
+            self.run_list.setCurrentRow(0)
+        self._update_run_action_buttons()
+
     def _show_empty_detail(self):
         self.detail_title.setText("-")
         self.detail_body.setText(tr("briefing.empty"))
@@ -399,6 +557,142 @@ class BriefingPage(QWidget):
         if row < 0 or row >= len(self._briefings):
             return
         self._show_briefing_detail(self._briefings[row])
+
+    def _update_run_action_buttons(self):
+        run = self._selected_run()
+        enabled = run is not None
+        self.btn_view_run_context.setEnabled(enabled)
+        self.btn_view_run_detail.setEnabled(enabled)
+
+    def _selected_run(self) -> dict | None:
+        row = self.run_list.currentRow()
+        if row < 0 or row >= len(self._visible_runs):
+            return None
+        return self._visible_runs[row]
+
+    def _prettify_payload(self, raw_value) -> str:
+        text = str(raw_value or "").strip()
+        if not text:
+            return tr("briefing.run_payload_empty")
+        try:
+            return json.dumps(json.loads(text), ensure_ascii=False, indent=2)
+        except Exception:
+            return text
+
+    def _show_payload_dialog(self, title: str, content: str):
+        dialog = QDialog(self)
+        dialog.setWindowTitle(title)
+        dialog.setModal(True)
+        dialog.resize(860, 620)
+
+        layout = QVBoxLayout(dialog)
+        viewer = QTextEdit()
+        viewer.setReadOnly(True)
+        viewer.setPlainText(content)
+        viewer.setStyleSheet(f"""
+            QTextEdit {{
+                background-color: {BG_DARK};
+                color: {TEXT_PRIMARY};
+                border: 1px solid {BORDER_COLOR};
+                border-radius: 8px;
+                padding: 8px;
+                font-family: Consolas, 'Courier New', monospace;
+                font-size: 12px;
+            }}
+        """)
+        layout.addWidget(viewer)
+
+        btn_close = QPushButton(tr("common.close"))
+        btn_close.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {ACCENT_PURPLE};
+                color: #FFFFFF;
+                border: none;
+                border-radius: 8px;
+                padding: 8px 14px;
+                font-size: 12px;
+                font-weight: bold;
+            }}
+            QPushButton:hover {{ background-color: #A78BFA; }}
+        """)
+        btn_close.clicked.connect(dialog.accept)
+        layout.addWidget(btn_close, alignment=Qt.AlignmentFlag.AlignRight)
+
+        dialog.exec()
+
+    def _show_selected_run_context(self):
+        run = self._selected_run()
+        if run is None:
+            QMessageBox.information(self, tr("common.warning"), tr("briefing.run_select_required"))
+            return
+        title = tr("briefing.run_context_title", run.get("date", "-"), run.get("session_label", "-"))
+        self._show_payload_dialog(title, self._prettify_payload(run.get("context_payload")))
+
+    def _show_selected_run_detail(self):
+        run = self._selected_run()
+        if run is None:
+            QMessageBox.information(self, tr("common.warning"), tr("briefing.run_select_required"))
+            return
+
+        sections = [
+            tr("briefing.run_meta_title"),
+            f"date: {run.get('date', '-')}",
+            f"session_type: {run.get('session_type', '-')}",
+            f"trigger_type: {run.get('trigger_type', '-')}",
+            f"status: {run.get('status', '-')}",
+            f"provider: {run.get('provider', '-')}",
+            f"model: {run.get('model', '-')}",
+            f"created_at: {run.get('created_at', '-')}",
+            f"started_at: {run.get('started_at', '-')}",
+            f"finished_at: {run.get('finished_at', '-')}",
+            f"retry_count: {run.get('retry_count', 0)}",
+            "",
+            tr("briefing.run_error_title"),
+            str(run.get("error_message", "") or tr("briefing.run_error_empty")),
+            "",
+            tr("briefing.run_result_title"),
+            self._prettify_payload(run.get("result_payload")),
+        ]
+        title = tr("briefing.run_detail_title", run.get("date", "-"), run.get("session_label", "-"))
+        self._show_payload_dialog(title, "\n".join(sections))
+
+    def _generate_briefing(self, session_type: str):
+        progress = QProgressDialog(
+            tr("briefing.generate_progress_message"),
+            "",
+            0,
+            0,
+            self,
+        )
+        progress.setWindowTitle(tr("briefing.generate_progress_title"))
+        progress.setWindowModality(Qt.WindowModality.WindowModal)
+        progress.setCancelButton(None)
+        progress.setMinimumDuration(0)
+        progress.show()
+        QApplication.processEvents()
+
+        try:
+            from frontend.services.briefing_service import BriefingService
+
+            svc = BriefingService()
+            result = svc.generate(session_type=session_type, date=QDate.currentDate().toString("yyyy-MM-dd"))
+            briefing = result.get("briefing", {}) if isinstance(result, dict) else {}
+            run = result.get("run", {}) if isinstance(result, dict) else {}
+            self._load_data()
+            QMessageBox.information(
+                self,
+                tr("common.success"),
+                tr(
+                    "briefing.generate_success",
+                    briefing.get("title", "-"),
+                    briefing.get("status", "success"),
+                    run.get("provider", "-"),
+                ),
+            )
+        except Exception as e:
+            QMessageBox.warning(self, tr("common.error"), tr("briefing.generate_failed") + f": {e}")
+        finally:
+            progress.close()
 
     def _open_manual_record_dialog(self):
         dialog = QDialog(self)

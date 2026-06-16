@@ -92,7 +92,9 @@ def init_db() -> None:
     Base.metadata.create_all(bind=engine)
     _migrate_watchlist_group_columns()
     _migrate_portfolio_status_and_group_columns()
+    _migrate_briefing_automation_columns()
     _migrate_knowledge_html_columns()
+    _migrate_briefing_run_timestamps()
 
 
 def _migrate_watchlist_group_columns() -> None:
@@ -144,3 +146,60 @@ def _migrate_knowledge_html_columns() -> None:
             if col_name in existing:
                 continue
             conn.execute(text(f"ALTER TABLE knowledge ADD COLUMN {col_name} {col_type}"))
+
+
+def _migrate_briefing_automation_columns() -> None:
+    """Ensure briefing automation metadata columns exist for legacy SQLite databases."""
+    required_columns = {
+        "session_type": "TEXT NOT NULL DEFAULT 'manual'",
+        "source": "TEXT NOT NULL DEFAULT 'manual'",
+        "provider": "TEXT",
+        "model": "TEXT",
+        "status": "TEXT NOT NULL DEFAULT 'success'",
+    }
+
+    with engine.begin() as conn:
+        rows = conn.execute(text("PRAGMA table_info(briefings)")).fetchall()
+        existing = {str(row[1]) for row in rows}
+        for col_name, col_type in required_columns.items():
+            if col_name in existing:
+                continue
+            conn.execute(text(f"ALTER TABLE briefings ADD COLUMN {col_name} {col_type}"))
+        if "updated_at" not in existing:
+            conn.execute(text("ALTER TABLE briefings ADD COLUMN updated_at DATETIME"))
+            conn.execute(
+                text(
+                    "UPDATE briefings "
+                    "SET updated_at = COALESCE(created_at, CURRENT_TIMESTAMP) "
+                    "WHERE updated_at IS NULL"
+                )
+            )
+
+
+def _migrate_briefing_run_timestamps() -> None:
+    """Ensure briefing run table contains finishing timestamps on legacy SQLite databases."""
+    with engine.begin() as conn:
+        table_rows = conn.execute(
+            text("SELECT name FROM sqlite_master WHERE type='table' AND name='briefing_runs'")
+        ).fetchall()
+        if not table_rows:
+            return
+
+        rows = conn.execute(text("PRAGMA table_info(briefing_runs)")).fetchall()
+        existing = {str(row[1]) for row in rows}
+        required_columns = {
+            "finished_at": "DATETIME",
+        }
+        for col_name, col_type in required_columns.items():
+            if col_name in existing:
+                continue
+            conn.execute(text(f"ALTER TABLE briefing_runs ADD COLUMN {col_name} {col_type}"))
+        if "started_at" not in existing:
+            conn.execute(text("ALTER TABLE briefing_runs ADD COLUMN started_at DATETIME"))
+            conn.execute(
+                text(
+                    "UPDATE briefing_runs "
+                    "SET started_at = COALESCE(created_at, CURRENT_TIMESTAMP) "
+                    "WHERE started_at IS NULL"
+                )
+            )

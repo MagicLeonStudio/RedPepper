@@ -7,7 +7,7 @@ plus dedicated request/response models for business operations.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Optional
+from typing import Any, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -216,6 +216,11 @@ class BriefingBase(BaseModel):
 
     date: str = Field(..., max_length=10)
     title: str = Field(..., max_length=200)
+    session_type: str = Field(default="manual", max_length=20)
+    source: str = Field(default="manual", max_length=20)
+    provider: Optional[str] = Field(default=None, max_length=50)
+    model: Optional[str] = Field(default=None, max_length=100)
+    status: str = Field(default="success", max_length=20)
     overseas: Optional[str] = None
     domestic: Optional[str] = None
     market: Optional[str] = None
@@ -236,6 +241,11 @@ class BriefingUpdate(BaseModel):
 
     date: Optional[str] = Field(default=None, max_length=10)
     title: Optional[str] = Field(default=None, max_length=200)
+    session_type: Optional[str] = Field(default=None, max_length=20)
+    source: Optional[str] = Field(default=None, max_length=20)
+    provider: Optional[str] = Field(default=None, max_length=50)
+    model: Optional[str] = Field(default=None, max_length=100)
+    status: Optional[str] = Field(default=None, max_length=20)
     overseas: Optional[str] = None
     domestic: Optional[str] = None
     market: Optional[str] = None
@@ -248,6 +258,76 @@ class BriefingResponse(BriefingBase):
 
     id: int
     created_at: datetime
+    updated_at: datetime
+
+
+class BriefingRunBase(BaseModel):
+    """Shared BriefingRun fields."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    date: str = Field(..., max_length=10)
+    session_type: str = Field(..., max_length=20)
+    trigger_type: str = Field(default="manual", max_length=20)
+    source: str = Field(default="auto", max_length=20)
+    provider: Optional[str] = Field(default=None, max_length=50)
+    model: Optional[str] = Field(default=None, max_length=100)
+    status: str = Field(default="pending", max_length=20)
+    retry_count: int = Field(default=0, ge=0, le=99)
+    context_payload: Optional[str] = None
+    result_payload: Optional[str] = None
+    error_message: Optional[str] = None
+
+
+class BriefingRunCreate(BriefingRunBase):
+    """Fields required to create a briefing run log."""
+
+    pass
+
+
+class BriefingRunUpdate(BaseModel):
+    """Fields available for updating a briefing run log."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    date: Optional[str] = Field(default=None, max_length=10)
+    session_type: Optional[str] = Field(default=None, max_length=20)
+    trigger_type: Optional[str] = Field(default=None, max_length=20)
+    source: Optional[str] = Field(default=None, max_length=20)
+    provider: Optional[str] = Field(default=None, max_length=50)
+    model: Optional[str] = Field(default=None, max_length=100)
+    status: Optional[str] = Field(default=None, max_length=20)
+    retry_count: Optional[int] = Field(default=None, ge=0, le=99)
+    context_payload: Optional[str] = None
+    result_payload: Optional[str] = None
+    error_message: Optional[str] = None
+
+
+class BriefingRunResponse(BriefingRunBase):
+    """BriefingRun as returned by the API."""
+
+    id: int
+    started_at: datetime
+    finished_at: Optional[datetime] = None
+    created_at: datetime
+
+
+class BriefingGenerateRequest(BaseModel):
+    """Request payload for AI-generated briefing creation."""
+
+    date: Optional[str] = Field(default=None, max_length=10)
+    session_type: str = Field(default="manual", max_length=20)
+    provider: Optional[str] = Field(default=None, max_length=100)
+    trigger_type: str = Field(default="manual", max_length=20)
+
+
+class BriefingGenerateResponse(BaseModel):
+    """Response payload for AI-generated briefing creation."""
+
+    briefing: BriefingResponse
+    run: BriefingRunResponse
+    context: dict[str, Any]
+    raw_answer: str
 
 
 # =============================================================================

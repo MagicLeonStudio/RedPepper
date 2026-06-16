@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import csv
+import difflib
 import hashlib
 import json
 import re
@@ -75,6 +76,11 @@ _PORTFOLIO_SYNC_FIELDS = (
     "group_color",
     "group_order",
 )
+_SYMBOL_NAME_ALIASES = {
+    "纳指": "纳斯达克",
+    "标普": "标普500",
+    "沪深300": "沪深三百",
+}
 
 
 def _clean_text(value: object, *, default: str = "", max_length: int | None = None) -> str:
@@ -525,6 +531,188 @@ def _infer_type_from_name(name: str, fallback: str = "ETF") -> str:
     if any(token in text for token in ("股份", "科技", "银行", "药业", "电子", "能源", "证券", "电力")):
         return "股票"
     return _normalize_portfolio_type(fallback)
+
+
+def _normalize_symbol_match_key(value: str) -> str:
+    text = re.sub(r"[\s\-_/（）()【】\[\]·.,，。:：]+", "", str(value or "").strip().lower())
+    text = _fuzzy_holding_name_key(text)
+    for alias, canonical in _SYMBOL_NAME_ALIASES.items():
+        text = text.replace(alias, canonical)
+    if len(text) >= 3 and re.search(r"[\u4e00-\u9fa5]", text):
+        text = re.sub(r"[a-z]$", "", text)
+    return text
+
+
+def _build_portfolio_symbol_candidates(db: Session) -> tuple[dict[str, tuple[str, str]], list[tuple[str, str]], list[dict[str, str]]]:
+    name_to_code: dict[str, tuple[str, str]] = {}
+    name_code_pairs: list[tuple[str, str]] = []
+    candidate_rows: list[dict[str, str]] = []
+
+    for source_name, model in (("portfolio", Portfolio), ("watchlist", Watchlist)):
+        for row in db.query(model.code, model.name).all():
+            code = _clean_text(getattr(row, "code", ""), max_length=20)
+            name = _clean_text(getattr(row, "name", ""), max_length=100)
+            code_match = _SECURITY_CODE_RE.search(code)
+            code = code_match.group(1) if code_match else ""
+            if not code or not name:
+                continue
+            match_key = _normalize_symbol_match_key(name)
+            if match_key and match_key not in name_to_code:
+                name_to_code[match_key] = (code, name)
+            name_code_pairs.append((name, code))
+            candidate_rows.append({"name": name, "code": code, "source": source_name})
+
+    unique = {(item["name"], item["code"], item["source"]): item for item in candidate_rows}
+    return name_to_code, name_code_pairs, list(unique.values())
+
+
+def _local_match_portfolio_code(
+    name: str,
+    code: str,
+    name_to_code: dict[str, tuple[str, str]],
+    pairs: list[tuple[str, str]],
+) -> tuple[str, str, str | None]:
+    existing_code = _clean_text(code, max_length=20)
+    if existing_code:
+        code_match = _SECURITY_CODE_RE.search(existing_code)
+        return (code_match.group(1) if code_match else existing_code), _clean_text(name, max_length=100), "already"
+
+    key = _normalize_symbol_match_key(name)
+    if not key:
+        return "", "", None
+
+    exact = name_to_code.get(key)
+    if exact:
+        return exact[0], exact[1], "exact"
+
+    normalized_pairs = [(_normalize_symbol_match_key(candidate_name), candidate_name, candidate_code) for candidate_name, candidate_code in pairs]
+    for candidate_key, candidate_name, candidate_code in normalized_pairs:
+        if not candidate_key:
+            continue
+        if key == candidate_key:
+            return candidate_code, candidate_name, "normalized"
+        if len(key) >= 2 and len(candidate_key) >= 2 and (key in candidate_key or candidate_key in key):
+            return candidate_code, candidate_name, "contains"
+
+    close = difflib.get_close_matches(key, [row[0] for row in normalized_pairs if row[0]], n=1, cutoff=0.6)
+    if not close:
+        return "", "", None
+
+    matched_key = close[0]
+    for candidate_key, candidate_name, candidate_code in normalized_pairs:
+        if candidate_key == matched_key:
+            return candidate_code, candidate_name, "fuzzy"
+    return "", "", None
+
+
+async def _deepseek_match_portfolio_codes(unmatched_names: list[str], candidates: list[dict[str, str]]) -> dict[str, dict[str, str]]:
+    if not unmatched_names or not candidates:
+        return {}
+
+    try:
+        settings.reload()
+        provider_cfg = settings.get("ai.providers.deepseek", {}) or {}
+        if not provider_cfg.get("api_key"):
+            return {}
+        provider = get_provider("deepseek")
+    except Exception:
+        return {}
+
+    payload_names = list(dict.fromkeys(_clean_text(name, max_length=100) for name in unmatched_names if _clean_text(name, max_length=100)))
+    if not payload_names:
+        return {}
+
+    prompt = (
+        "你是 A 股/ETF/基金证券代码匹配助手。\n"
+        "任务：根据简称或不完整名称，在给定候选库中补全最可能的证券代码。\n"
+        "严格要求：\n"
+        "1) 只返回 JSON 数组，不要额外解释；\n"
+        "2) 每项字段：query_name, matched_name, code, confidence；\n"
+        "3) code 必须来自候选库；\n"
+        "4) 如果没有把握，code 置为空字符串，confidence 置 0；\n"
+        "5) confidence 取 0~1 浮点；\n"
+        "6) 简称、别名、ETF 缩写都可以按最接近候选理解。\n\n"
+        f"待匹配名称: {json.dumps(payload_names, ensure_ascii=False)}\n"
+        f"候选库: {json.dumps(candidates[:500], ensure_ascii=False)}"
+    )
+
+    model = provider_cfg.get("default_model") or "deepseek-v4-flash"
+    try:
+        raw = await provider.chat([{"role": "user", "content": prompt}], model=model, temperature=0.0)
+        data = json.loads(extract_json_block(raw))
+    except Exception:
+        return {}
+    if not isinstance(data, list):
+        return {}
+
+    valid_codes = {str(item.get("code", "")).strip() for item in candidates}
+    result: dict[str, dict[str, str]] = {}
+    for item in data:
+        if not isinstance(item, dict):
+            continue
+        query_name = _clean_text(item.get("query_name", item.get("name", "")), max_length=100)
+        matched_name = _clean_text(item.get("matched_name", ""), max_length=100)
+        code = _clean_text(item.get("code", ""), max_length=20)
+        try:
+            confidence = float(item.get("confidence", 0) or 0)
+        except Exception:
+            confidence = 0.0
+        if not query_name or not code or code not in valid_codes or confidence < 0.55:
+            continue
+        if not matched_name:
+            for candidate in candidates:
+                if _clean_text(candidate.get("code", ""), max_length=20) == code:
+                    matched_name = _clean_text(candidate.get("name", ""), max_length=100)
+                    break
+        result[query_name] = {"code": code, "name": matched_name}
+    return result
+
+
+async def _complete_portfolio_rows_with_symbol_candidates(rows: list[dict], raw_text: str, db: Session) -> list[dict]:
+    if not rows:
+        return rows
+
+    name_to_code, pairs, candidates = _build_portfolio_symbol_candidates(db)
+    if not pairs and not candidates:
+        return rows
+
+    completed_rows: list[dict] = []
+    unresolved_names: list[str] = []
+    unresolved_indices: list[int] = []
+
+    for index, row in enumerate(rows):
+        if not isinstance(row, dict):
+            completed_rows.append(row)
+            continue
+        updated = dict(row)
+        matched_code, matched_name, _matched_type = _local_match_portfolio_code(updated.get("name", ""), updated.get("code", ""), name_to_code, pairs)
+        if matched_code and not _clean_text(updated.get("code", ""), max_length=20):
+            updated["code"] = matched_code
+        if matched_name:
+            current_name = _clean_text(updated.get("name", ""), max_length=100)
+            if len(matched_name) >= len(current_name):
+                updated["name"] = matched_name
+        if not _clean_text(updated.get("code", ""), max_length=20) and _clean_text(updated.get("name", ""), max_length=100):
+            unresolved_names.append(_clean_text(updated.get("name", ""), max_length=100))
+            unresolved_indices.append(index)
+        completed_rows.append(updated)
+
+    if unresolved_names:
+        deepseek_map = await _deepseek_match_portfolio_codes(unresolved_names, candidates)
+        if deepseek_map:
+            for index in unresolved_indices:
+                row = completed_rows[index]
+                row_name = _clean_text(row.get("name", ""), max_length=100)
+                if row_name and not _clean_text(row.get("code", ""), max_length=20):
+                    matched = deepseek_map.get(row_name, {})
+                    matched_code = _clean_text(matched.get("code", ""), max_length=20)
+                    matched_name = _clean_text(matched.get("name", ""), max_length=100)
+                    if matched_code:
+                        row["code"] = matched_code
+                    if matched_name and len(matched_name) >= len(row_name):
+                        row["name"] = matched_name
+
+    return completed_rows
 
 
 def _parse_portfolio_broker_dump_text(raw_text: str) -> list[OCRHolding]:
@@ -1150,6 +1338,10 @@ async def _import_portfolio_rows(rows: list[dict], db: Session) -> dict:
 
 
 def _extract_portfolio_rows_from_text(raw_text: str) -> list[dict]:
+    csv_rows = _parse_portfolio_csv_rows(raw_text)
+    if csv_rows:
+        return _merge_portfolio_csv_rows(csv_rows)
+
     parsed = _merge_ocr_items(
         _parse_portfolio_broker_dump_text(raw_text)
         + _parse_portfolio_text(raw_text)
@@ -1157,7 +1349,7 @@ def _extract_portfolio_rows_from_text(raw_text: str) -> list[dict]:
     )
     rows: list[dict] = []
     for item in parsed:
-        if not _clean_text(item.code) or not _clean_text(item.name):
+        if not _clean_text(item.name):
             continue
         rows.append(item.model_dump())
     return rows
@@ -1704,6 +1896,8 @@ async def portfolio_import_text(request: dict, db: Session = Depends(get_db)) ->
             "errors": ["No valid holdings parsed from text"],
             "total": 0,
         }
+
+    rows = await _complete_portfolio_rows_with_symbol_candidates(rows, raw_text, db)
 
     return await _import_portfolio_rows(rows, db)
 
