@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import csv
+import difflib
 import hashlib
 import json
 import re
@@ -20,6 +21,7 @@ from backend.app.ai.ocr_utils import (
     strip_data_url,
 )
 from backend.app.ai.factory import get_provider
+from backend.app.ai.local_ocr import run_local_ocr_text
 from backend.app.config import settings
 from backend.app.dependencies import get_db
 from backend.app.models import Portfolio, Watchlist
@@ -48,6 +50,12 @@ _GROUP_COLOR_PALETTE = [
     "#440EA5E9",
 ]
 _DEFAULT_GROUP_ORDER = 999
+_THS_FUND_ACCOUNT_KEYWORDS = (
+    "同花顺钱包",
+    "同花顺理财",
+    "钱包",
+    "理财",
+)
 
 
 def _clean_text(value: object, *, default: str = "", max_length: int | None = None) -> str:
@@ -66,6 +74,197 @@ def _normalize_watchlist_type(value: object) -> str:
     if text in {"etf"}:
         return "ETF"
     return "股票"
+
+def _is_ths_fund_source(raw_text: str) -> bool:
+    text = str(raw_text or "")
+    return any(keyword in text for keyword in _THS_FUND_ACCOUNT_KEYWORDS)
+
+
+def _normalize_symbol_match_key(value: str) -> str:
+    return re.sub(r"[\s\-_/（）()【】\[\]·.,，。:：]+", "", str(value or "").strip().lower())
+
+
+def _build_watchlist_symbol_candidates(db: Session) -> tuple[dict[str, tuple[str, str]], list[tuple[str, str]], list[dict[str, str]]]:
+    name_to_code: dict[str, tuple[str, str]] = {}
+    pairs: list[tuple[str, str]] = []
+    candidates: list[dict[str, str]] = []
+
+    for source_name, model in (("watchlist", Watchlist), ("portfolio", Portfolio)):
+        for row in db.query(model.code, model.name).all():
+            code = _extract_security_code({"code": getattr(row, "code", "")})
+            name = _clean_text(getattr(row, "name", ""), max_length=100)
+            if not code or not name:
+                continue
+            key = _normalize_symbol_match_key(name)
+            if key and key not in name_to_code:
+                name_to_code[key] = (code, name)
+            pairs.append((name, code))
+            candidates.append({"name": name, "code": code, "source": source_name})
+
+    uniq = {(item["name"], item["code"], item["source"]): item for item in candidates}
+    return name_to_code, pairs, list(uniq.values())
+
+
+def _local_match_watchlist_code(
+    name: str,
+    code: str,
+    name_to_code: dict[str, tuple[str, str]],
+    pairs: list[tuple[str, str]],
+) -> tuple[str, str]:
+    existing_code = _extract_security_code({"code": code})
+    if existing_code:
+        return existing_code, _clean_text(name, max_length=100)
+
+    key = _normalize_symbol_match_key(name)
+    if not key:
+        return "", ""
+
+    exact = name_to_code.get(key)
+    if exact:
+        return exact[0], exact[1]
+
+    normalized_pairs = [(_normalize_symbol_match_key(candidate_name), candidate_name, candidate_code) for candidate_name, candidate_code in pairs]
+    for candidate_key, candidate_name, candidate_code in normalized_pairs:
+        if not candidate_key:
+            continue
+        if key == candidate_key:
+            return candidate_code, candidate_name
+        if len(key) >= 2 and len(candidate_key) >= 2 and (key in candidate_key or candidate_key in key):
+            return candidate_code, candidate_name
+
+    close = difflib.get_close_matches(key, [pair[0] for pair in normalized_pairs if pair[0]], n=1, cutoff=0.6)
+    if not close:
+        return "", ""
+    matched_key = close[0]
+    for candidate_key, candidate_name, candidate_code in normalized_pairs:
+        if candidate_key == matched_key:
+            return candidate_code, candidate_name
+    return "", ""
+
+
+async def _llm_match_watchlist_codes(unresolved_names: list[str], candidates: list[dict[str, str]]) -> dict[str, dict[str, str]]:
+    if not unresolved_names:
+        return {}
+
+    settings.reload()
+    provider_attempts: list[tuple[str, str, float]] = []
+    deepseek_cfg = settings.get("ai.providers.deepseek") or {}
+    if str(deepseek_cfg.get("api_key", "") or "").strip():
+        provider_attempts.append(("deepseek", "deepseek-v4-flash", 0.2))
+    kimi_cfg = settings.get("ai.providers.kimi") or {}
+    kimi_model = str(kimi_cfg.get("default_model", "") or "kimi-k2.6").strip() or "kimi-k2.6"
+    if str(kimi_cfg.get("api_key", "") or "").strip():
+        provider_attempts.append(("kimi", kimi_model, 0.2))
+    if not provider_attempts:
+        return {}
+
+    dedup_names = list(dict.fromkeys(_clean_text(name, max_length=100) for name in unresolved_names if _clean_text(name, max_length=100)))
+    if not dedup_names:
+        return {}
+
+    prompt = (
+        "你是证券代码匹配助手。根据给定名称，从候选库中找出最匹配的标的。\n"
+        "只返回 JSON 数组，每项字段为 query_name, matched_name, code, confidence。\n"
+        "规则：\n"
+        "1) code 必须是候选库中真实存在的 6 位数字代码，严禁编造或猜测候选库以外的代码；\n"
+        "2) 名称与候选库无法高置信匹配时，code 置空且 confidence=0；\n"
+        "3) confidence 为 0~1 浮点，仅当非常确定同一标的时才给高分；\n"
+        "4) 港股/美股/概念板块等无 A 股 6 位代码的标的，一律 code 置空。\n\n"
+        f"待匹配: {json.dumps(dedup_names, ensure_ascii=False)}\n"
+        f"候选库: {json.dumps(candidates[:800], ensure_ascii=False)}"
+    )
+
+    # Only accept codes that actually exist in the candidate library to prevent
+    # the model from inventing non-existent codes.
+    valid_codes = {
+        _extract_security_code(candidate)
+        for candidate in candidates
+        if _extract_security_code(candidate)
+    }
+
+    for provider_name, model_name, temperature in provider_attempts:
+        try:
+            provider = get_provider(provider_name)
+            raw = await asyncio.wait_for(
+                provider.chat(
+                    [{"role": "user", "content": prompt}],
+                    model=model_name,
+                    temperature=temperature,
+                ),
+                timeout=90,
+            )
+            payload = json.loads(extract_json_block(raw))
+            if not isinstance(payload, list):
+                continue
+
+            result: dict[str, dict[str, str]] = {}
+            for row in payload:
+                if not isinstance(row, dict):
+                    continue
+                query_name = _clean_text(row.get("query_name", row.get("name", "")), max_length=100)
+                matched_name = _clean_text(row.get("matched_name", row.get("name", "")), max_length=100)
+                code = _extract_security_code(row)
+                try:
+                    confidence = float(row.get("confidence", 0) or 0)
+                except Exception:
+                    confidence = 0.0
+                if not query_name or not code or confidence < 0.55:
+                    continue
+                # Reject hallucinated codes: only trust codes that exist in the
+                # candidate library or are otherwise tradable (not concept boards).
+                if code not in valid_codes or not _is_tradable_security_code(code):
+                    continue
+                result[query_name] = {"code": code, "name": matched_name}
+            if result:
+                return result
+        except Exception:
+            continue
+
+    return {}
+
+
+async def _force_fill_missing_watchlist_codes(rows: list[dict], raw_text: str, db: Session) -> list[dict]:
+    if not rows:
+        return rows
+
+    name_to_code, pairs, candidates = _build_watchlist_symbol_candidates(db)
+
+    patched_rows: list[dict] = []
+    unresolved_names: list[str] = []
+    unresolved_indices: list[int] = []
+
+    for index, row in enumerate(rows):
+        if not isinstance(row, dict):
+            patched_rows.append(row)
+            continue
+        updated = dict(row)
+        source_name = _clean_text(updated.get("name", ""), max_length=100)
+        matched_code, matched_name = _local_match_watchlist_code(source_name, updated.get("code", ""), name_to_code, pairs)
+        if matched_code and not _extract_security_code(updated):
+            updated["code"] = matched_code
+        if matched_name and len(matched_name) >= len(source_name):
+            updated["name"] = matched_name
+        if source_name and not _extract_security_code(updated):
+            unresolved_names.append(source_name)
+            unresolved_indices.append(index)
+        patched_rows.append(updated)
+
+    if unresolved_names:
+        llm_map = await _llm_match_watchlist_codes(unresolved_names, candidates)
+        for index in unresolved_indices:
+            row = patched_rows[index]
+            name = _clean_text(row.get("name", ""), max_length=100)
+            if not name or _extract_security_code(row):
+                continue
+            patch = llm_map.get(name, {})
+            code = _extract_security_code(patch)
+            matched_name = _clean_text(patch.get("name", ""), max_length=100)
+            if code:
+                row["code"] = code
+            if matched_name and len(matched_name) >= len(name):
+                row["name"] = matched_name
+
+    return patched_rows
 
 
 def _extract_security_code(raw: dict) -> str:
@@ -171,6 +370,26 @@ _PURE_INDEX_NAMES = {
 }
 _WATCHLIST_HEADER_TOKENS = ("最新价", "现价", "涨幅", "涨跌", "成交", "市值", "换手", "振幅")
 
+# Characters that make up THS/broker market flags glued to a code cell, e.g.
+# "002180融陆" (融=融资融券, 陆=陆股通/沪深港通). A cell built only from these
+# flags + digits/letters carries no real security name.
+_WATCHLIST_MARKET_FLAG_CHARS = set("融陆沪深港美RBHKSZ0123456789")
+
+
+def _is_watchlist_market_flag_cell(text: str) -> bool:
+    """Return True when a cell is only a code / market-flag token (no real name).
+
+    Guards against picking cells like "002180融陆" or "融陆" as the security name.
+    Names that merely start with a flag character (e.g. 陆家嘴) still contain other
+    characters and are therefore not treated as flag cells.
+    """
+    raw = str(text or "").strip()
+    if not raw:
+        return False
+    if _looks_like_number(raw):
+        return False
+    return all(ch in _WATCHLIST_MARKET_FLAG_CHARS for ch in raw)
+
 
 def _looks_like_number(text: str) -> bool:
     raw = str(text or "").strip().replace("%", "").replace(",", "").replace("+", "")
@@ -197,6 +416,69 @@ def _is_pure_index_name(name: str) -> bool:
     return False
 
 
+# Navigation tabs / section headers that leak into 同花顺/东财 watchlist OCR.
+_WATCHLIST_NOISE_NAMES = {
+    "美股", "英股", "港股", "环球", "扩展", "选股", "发现", "资讯", "自选股", "自选",
+    "策略板块", "板块同列", "板块回列", "涨停分析", "宽价先机", "大盘云图", "最近浏览",
+    "全部自选", "我的持仓", "我的持合", "分组", "板块", "板块管理",
+    "同花顺理财", "我的基金", "数据中心", "基金超市", "收益宝", "理财宝",
+    "滚动资讯", "自选基金", "基金净值", "基金排行", "新发基金", "基金定投",
+    "基金筛选", "收益计算", "我的自选基金", "开放式基金", "基金代码", "基金名称",
+    "场内基金", "货币型基金", "添加基金",
+}
+
+
+def _is_watchlist_noise_name(name: str) -> bool:
+    """Return True when a name is a UI header/nav label or a bare value."""
+    n = str(name or "").strip()
+    if not n:
+        return True
+    if n in _WATCHLIST_NOISE_NAMES:
+        return True
+    if any(token in n for token in _WATCHLIST_HEADER_TOKENS):
+        return True
+    low = n.lower()
+    if low in {"name", "code", "代码", "名称", "股票名称", "基金名称", "股票/基金名称"}:
+        return True
+    # Bare value cells wrongly promoted to a name, e.g. "505.15亿", "+10.05亿", "1.24亿".
+    if re.fullmatch(r"[+\-]?[\d.,]+\s*[万亿%]?", n):
+        return True
+    if re.search(r"[+\-]?\d+(?:\.\d+)?\s*[万亿]", n):
+        return True
+    # Pseudo index tickers like "1A0001".
+    if re.match(r"^\d+[A-Za-z]", n):
+        return True
+    return False
+
+
+def _is_tradable_security_code(code: str) -> bool:
+    """Reject non-tradable pseudo codes (同花顺 concept/industry board indices).
+
+    Real A-share / fund / ETF codes are 6 digits. THS block/concept indices use
+    the 88xxxx range (e.g. 885517 机器人概念, 886033 CPO, 888800), which are not
+    importable securities and must not enter the watchlist.
+    """
+    c = str(code or "").strip()
+    if not re.fullmatch(r"\d{6}", c):
+        return False
+    if c.startswith("88"):
+        return False
+    if c == "000000":
+        return False
+    return True
+
+
+# Fund-name tails that OCR splits onto the next line (联接/发起式/QDII/份额类别).
+_FUND_NAME_CONTINUATION_RE = re.compile(r"^[)）起式联接发QDI-]")
+
+
+def _is_fund_name_continuation(name: str) -> bool:
+    n = str(name or "").strip()
+    if not n or len(n) > 12:
+        return False
+    return bool(_FUND_NAME_CONTINUATION_RE.match(n))
+
+
 def _parse_watchlist_freeform_rows(raw_text: str) -> list[dict]:
     """Parse arbitrary pasted text (e.g. 同花顺/东方财富 自选股列表) into name/code rows.
 
@@ -204,8 +486,7 @@ def _parse_watchlist_freeform_rows(raw_text: str) -> list[dict]:
     extra price/percent columns, headers, and pure index summary rows.  The
     inferred codes are filled in later by DeepSeek.
     """
-    rows: list[dict] = []
-    seen: set[str] = set()
+    parsed: list[dict] = []
 
     for raw_line in str(raw_text or "").splitlines():
         line = str(raw_line or "").strip()
@@ -222,18 +503,45 @@ def _parse_watchlist_freeform_rows(raw_text: str) -> list[dict]:
             match = _SECURITY_CODE_RE.search(part)
             if match and not code:
                 code = match.group(1)
+            # Never treat a security-code cell (e.g. "002180融陆") or a pure
+            # market-flag cell (e.g. "融陆") as the security name.
+            if match or _is_watchlist_market_flag_cell(part):
+                continue
             if not name and re.search(r"[\u4e00-\u9fffA-Za-z]", part) and not _looks_like_number(part):
                 name = part
 
         cleaned_name = _SECURITY_CODE_RE.sub("", name).strip(" -:|()（）") or name
         cleaned_name = cleaned_name.strip()
+
+        # Drop non-tradable pseudo codes (concept/industry board indices) so they
+        # never surface as "codes that do not exist".
+        if code and not _is_tradable_security_code(code):
+            code = ""
+
+        parsed.append({"code": code, "name": cleaned_name})
+
+    # Re-attach fund names that OCR wrapped onto a following code-less line, e.g.
+    # "鹏华国证石油天然气ETF联" + "接C" -> "鹏华国证石油天然气ETF联接C".
+    merged: list[dict] = []
+    for row in parsed:
+        if (
+            not row["code"]
+            and merged
+            and merged[-1]["code"]
+            and _is_fund_name_continuation(row["name"])
+        ):
+            merged[-1]["name"] = f"{merged[-1]['name']}{row['name']}".strip()
+            continue
+        merged.append(row)
+
+    rows: list[dict] = []
+    seen: set[str] = set()
+    for row in merged:
+        code = row["code"]
+        cleaned_name = row["name"]
         if not cleaned_name and not code:
             continue
-
-        low = cleaned_name.lower()
-        if any(token in cleaned_name for token in _WATCHLIST_HEADER_TOKENS):
-            continue
-        if low in {"name", "code", "代码", "名称", "股票名称", "基金名称", "股票/基金名称"}:
+        if _is_watchlist_noise_name(cleaned_name):
             continue
         if _is_pure_index_name(cleaned_name):
             continue
@@ -247,24 +555,66 @@ def _parse_watchlist_freeform_rows(raw_text: str) -> list[dict]:
     return rows
 
 
+
 async def _normalize_watchlist_rows_with_deepseek(raw_text: str, rows: list[dict]) -> list[dict]:
-    """Use DeepSeek to infer 6-digit codes from names and complete research fields."""
+    """Use DeepSeek first and Kimi fallback to infer codes and enrich fields."""
     if not rows:
         return []
 
-    settings.reload()
-    deepseek_cfg = settings.get("ai.providers.deepseek") or {}
-    deepseek_key = str(deepseek_cfg.get("api_key", "") or "").strip()
-    if not deepseek_key:
-        return rows
+    source_text = str(raw_text or "")
+    source_is_fund = _is_ths_fund_source(source_text)
 
-    provider = get_provider("deepseek")
+    def _normalize_payload(payload_rows: list[dict]) -> list[dict]:
+        normalized_rows: list[dict] = []
+        for row in payload_rows:
+            if not isinstance(row, dict):
+                continue
+            name = _clean_text(row.get("name", ""), max_length=100)
+            if not name or _is_pure_index_name(name):
+                continue
+            inferred_type = row.get("type") or _infer_watchlist_type(row)
+            if source_is_fund and _normalize_watchlist_type(inferred_type) == "股票":
+                inferred_type = "基金"
+            code = _extract_security_code(row) or _clean_text(row.get("code", ""), max_length=20)
+            # Drop non-tradable pseudo codes (concept/industry board indices).
+            if code and not _is_tradable_security_code(code):
+                code = ""
+            normalized_rows.append(
+                {
+                    "code": code,
+                    "name": name,
+                    "type": _normalize_watchlist_type(inferred_type),
+                    "sector": _clean_text(row.get("sector", "") or row.get("industry", ""), max_length=50),
+                    "reason": _clean_text(row.get("reason", "")),
+                    "trigger_condition": _clean_text(
+                        row.get("trigger_condition", "") or row.get("condition", ""), max_length=200
+                    ),
+                    "rating": _sanitize_rating(str(row.get("rating") or "⭐⭐⭐")),
+                    "status": _normalize_watchlist_status(row.get("status") or "观察"),
+                }
+            )
+        return normalized_rows
+
+    def _quality_score(payload_rows: list[dict]) -> tuple[int, int]:
+        valid = 0
+        with_code = 0
+        for row in payload_rows:
+            if not isinstance(row, dict):
+                continue
+            if _clean_text(row.get("name", ""), max_length=100):
+                valid += 1
+            if _SECURITY_CODE_RE.search(_clean_text(row.get("code", ""), max_length=20)):
+                with_code += 1
+        return valid, with_code
+
+    settings.reload()
     seed = [{"code": str(r.get("code", "") or ""), "name": str(r.get("name", "") or "")} for r in rows]
     prompt = (
         "你是 A 股观察池结构化清洗助手。根据给出的标的名称（可能缺少代码），"
         "推断每个标的的 6 位证券代码，并补全研究信息，输出可直接入库的 JSON 数组。"
         "每项字段固定为：code,name,type,sector,reason,trigger_condition,rating,status。\n"
         "规则：\n"
+        "0) 若原始文本包含 同花顺钱包/同花顺理财，则按基金账户语义解析，type 优先输出 基金/ETF；\n"
         "1) code 必须是 6 位数字，依据名称和 A 股/ETF/基金常识推断"
         "（如 科创50ETF→588000、恒生科技ETF→513130、纳指ETF→513100）；无法确定时返回空字符串；\n"
         "2) name 使用规范全称；\n"
@@ -281,47 +631,51 @@ async def _normalize_watchlist_rows_with_deepseek(raw_text: str, rows: list[dict
         f"初步解析:\n{json.dumps(seed, ensure_ascii=False)}"
     )
 
-    try:
-        raw = await asyncio.wait_for(
-            provider.chat(
-                [{"role": "user", "content": prompt}],
-                model="deepseek-v4-flash",
-                temperature=0.3,
-            ),
-            timeout=120,
-        )
-        payload = json.loads(extract_json_block(raw))
-    except Exception:
-        payload = rows
+    provider_attempts: list[tuple[str, str, float]] = []
+    deepseek_cfg = settings.get("ai.providers.deepseek") or {}
+    if str(deepseek_cfg.get("api_key", "") or "").strip():
+        provider_attempts.append(("deepseek", "deepseek-v4-flash", 0.3))
 
-    if isinstance(payload, dict):
-        payload = payload.get("items", [])
-    if not isinstance(payload, list):
-        payload = rows
+    kimi_cfg = settings.get("ai.providers.kimi") or {}
+    kimi_model = str(kimi_cfg.get("default_model", "") or "kimi-k2.6").strip() or "kimi-k2.6"
+    if str(kimi_cfg.get("api_key", "") or "").strip():
+        provider_attempts.append(("kimi", kimi_model, 0.4))
 
-    normalized: list[dict] = []
-    for row in payload:
-        if not isinstance(row, dict):
-            continue
-        name = _clean_text(row.get("name", ""), max_length=100)
-        if not name or _is_pure_index_name(name):
-            continue
-        normalized.append(
-            {
-                "code": _extract_security_code(row) or _clean_text(row.get("code", ""), max_length=20),
-                "name": name,
-                "type": _normalize_watchlist_type(row.get("type") or _infer_watchlist_type(row)),
-                "sector": _clean_text(row.get("sector", "") or row.get("industry", ""), max_length=50),
-                "reason": _clean_text(row.get("reason", "")),
-                "trigger_condition": _clean_text(
-                    row.get("trigger_condition", "") or row.get("condition", ""), max_length=200
+    best_rows = _normalize_payload(rows)
+    best_quality = _quality_score(best_rows)
+
+    for provider_name, model_name, temperature in provider_attempts:
+        try:
+            provider = get_provider(provider_name)
+            raw = await asyncio.wait_for(
+                provider.chat(
+                    [{"role": "user", "content": prompt}],
+                    model=model_name,
+                    temperature=temperature,
                 ),
-                "rating": _sanitize_rating(str(row.get("rating") or "⭐⭐⭐")),
-                "status": _normalize_watchlist_status(row.get("status") or "观察"),
-            }
-        )
+                timeout=120,
+            )
+            payload = json.loads(extract_json_block(raw))
+            if isinstance(payload, dict):
+                payload = payload.get("items", [])
+            if not isinstance(payload, list):
+                continue
 
-    return normalized or rows
+            candidate_rows = _normalize_payload(payload)
+            if not candidate_rows:
+                continue
+
+            candidate_quality = _quality_score(candidate_rows)
+            if candidate_quality > best_quality:
+                best_rows = candidate_rows
+                best_quality = candidate_quality
+
+            if candidate_quality[0] >= max(1, best_quality[0]) and candidate_quality[1] >= best_quality[1]:
+                return candidate_rows
+        except Exception:
+            continue
+
+    return best_rows or rows
 
 
 def _sanitize_rating(value: str) -> str:
@@ -528,6 +882,77 @@ async def _enrich_watchlist_items(provider, model: str, items: list[OCRWatchlist
     return enriched
 
 
+async def enrich_watchlist_db_items(db: Session, items: list[Watchlist]) -> int:
+    """Fill missing research fields (sector/reason/trigger_condition) on DB rows.
+
+    Used after portfolio -> watchlist sync so auto-created entries do not remain
+    blank. Only empty fields (and the placeholder reason "来自持仓同步") are
+    filled; user-provided values are preserved. Returns the number of rows
+    changed.
+    """
+
+    def _is_blank(value: object) -> bool:
+        return not str(value or "").strip()
+
+    pending = [
+        item
+        for item in items
+        if item is not None
+        and str(getattr(item, "code", "") or "").strip()
+        and (
+            _is_blank(getattr(item, "sector", ""))
+            or _is_blank(getattr(item, "trigger_condition", ""))
+            or _is_blank(getattr(item, "reason", ""))
+            or str(getattr(item, "reason", "") or "").strip() == "来自持仓同步"
+        )
+    ]
+    if not pending:
+        return 0
+
+    seeds = [
+        OCRWatchlistItem(
+            code=str(item.code or "").strip(),
+            name=str(item.name or "").strip(),
+            type=_normalize_watchlist_type(getattr(item, "type", "股票")),
+            sector=getattr(item, "sector", None),
+            reason=getattr(item, "reason", None),
+            trigger_condition=getattr(item, "trigger_condition", None),
+            rating=_sanitize_rating(getattr(item, "rating", "⭐⭐⭐")),
+            status=_normalize_watchlist_status(getattr(item, "status", "观察")),
+        )
+        for item in pending
+    ]
+
+    try:
+        _, model, provider = resolve_ocr_providers()[0]
+        enriched = await _enrich_watchlist_items(provider, model or "", seeds)
+    except Exception:
+        return 0
+
+    enriched_by_code = {item.code: item for item in enriched}
+    changed = 0
+    for item in pending:
+        patch = enriched_by_code.get(str(item.code or "").strip())
+        if patch is None:
+            continue
+
+        row_changed = False
+        if _is_blank(getattr(item, "sector", "")) and not _is_blank(patch.sector):
+            item.sector = _clean_text(patch.sector, max_length=50) or None
+            row_changed = True
+        if _is_blank(getattr(item, "trigger_condition", "")) and not _is_blank(patch.trigger_condition):
+            item.trigger_condition = _clean_text(patch.trigger_condition, max_length=200) or None
+            row_changed = True
+        current_reason = str(getattr(item, "reason", "") or "").strip()
+        if (not current_reason or current_reason == "来自持仓同步") and not _is_blank(patch.reason):
+            item.reason = _clean_text(patch.reason) or None
+            row_changed = True
+        if row_changed:
+            changed += 1
+
+    return changed
+
+
 def _normalize_watchlist_status(value: object) -> str:
     text = _clean_text(value, default="观察", max_length=20).lower()
     mapping = {
@@ -714,7 +1139,7 @@ def _complete_watchlist_item(db_item: Watchlist, item: OCRWatchlistItem) -> bool
 
 
 async def _import_watchlist_rows(
-    rows: list[dict], db: Session, *, enrich: bool = True, upsert: bool = False
+    rows: list[dict], db: Session, *, enrich: bool = True, upsert: bool = False, raw_text: str = ""
 ) -> dict:
     total_rows = 0
     invalid_rows = 0
@@ -732,6 +1157,8 @@ async def _import_watchlist_rows(
     existing_rows_before = int(db.query(Watchlist).count())
     batch_items: dict[str, OCRWatchlistItem] = {}
     updated_codes: set[str] = set()
+
+    rows = await _force_fill_missing_watchlist_codes(rows, raw_text, db)
 
     for row_num, row in enumerate(rows, start=1):
         total_rows += 1
@@ -1189,54 +1616,152 @@ async def watchlist_ocr(data: OCRRequest) -> OCRWatchlistResponse:
         "Return plain text only, one security per line, using exact format: 名称|6位代码. "
         "Do not return JSON. Do not add explanations."
     )
-    provider_name, model, provider = resolve_ocr_providers()[0]
-    raw_parts: list[str] = []
+    settings.reload()
+    local_cfg = settings.get("ai.local_ocr") or {}
+    local_enabled = bool(local_cfg.get("enabled", True))
+    local_prefer = bool(local_cfg.get("prefer_local", True))
+
+    raw_text = ""
+    used_provider = ""
+    used_model = ""
+
+    if local_enabled and local_prefer:
+        try:
+            local_max_slices = max(1, int(local_cfg.get("max_slices", 6) or 6))
+        except Exception:
+            local_max_slices = 6
+
+        local_text, local_model, _local_error = run_local_ocr_text(
+            focused_image,
+            mode="watchlist",
+            max_slices=local_max_slices,
+        )
+        if local_text.strip():
+            raw_text = local_text
+            used_provider = "local_ocr"
+            used_model = local_model
+
+    provider_attempts: list[tuple[str, str]] = []
+    deepseek_cfg = settings.get("ai.providers.deepseek") or {}
+    if str(deepseek_cfg.get("api_key", "") or "").strip():
+        provider_attempts.append(("deepseek", "deepseek-v4-flash"))
+
+    kimi_cfg = settings.get("ai.providers.kimi") or {}
+    kimi_model = str(kimi_cfg.get("default_model", "") or "kimi-k2.6").strip() or "kimi-k2.6"
+    if str(kimi_cfg.get("api_key", "") or "").strip():
+        provider_attempts.append(("kimi", kimi_model))
+
+    if not provider_attempts:
+        provider_name, model, _provider = resolve_ocr_providers()[0]
+        provider_attempts.append((provider_name, model or ""))
+
     errors: list[str] = []
 
-    # Try full-image OCR first. If it fails, gracefully fall back to sliced OCR.
-    for attempt in range(1, 3):
+    for provider_name, model in provider_attempts if not raw_text else []:
         try:
-            full_text = await asyncio.wait_for(
-                provider.vision(focused_image, prompt, model=model or None),
-                timeout=90 if data.fragment_mode else 120,
-            )
-            if str(full_text or "").strip():
-                raw_parts.append(str(full_text))
-                break
-        except TimeoutError:
-            errors.append(f"full-image OCR timed out (attempt {attempt})")
+            provider = get_provider(provider_name)
         except Exception as exc:
-            error_text = str(exc).strip() or type(exc).__name__
-            errors.append(f"full-image OCR failed (attempt {attempt}): {error_text}")
+            errors.append(f"{provider_name}: init failed: {exc}")
+            continue
 
-    if not raw_parts:
-        for index, segment in enumerate(slice_image_base64(focused_image), start=1):
+        raw_parts: list[str] = []
+        for attempt in range(1, 3):
             try:
-                segment_text = await asyncio.wait_for(
-                    provider.vision(segment, prompt, model=model or None),
-                    timeout=70,
+                full_text = await asyncio.wait_for(
+                    provider.vision(focused_image, prompt, model=model or None),
+                    timeout=90 if data.fragment_mode else 120,
                 )
+                if str(full_text or "").strip():
+                    raw_parts.append(str(full_text))
+                    break
             except TimeoutError:
-                errors.append(f"slice {index} timed out")
-                continue
+                errors.append(f"{provider_name}: full-image timeout (attempt {attempt})")
             except Exception as exc:
                 error_text = str(exc).strip() or type(exc).__name__
-                errors.append(f"slice {index} failed: {error_text}")
-                continue
+                errors.append(f"{provider_name}: full-image failed (attempt {attempt}): {error_text}")
 
-            if str(segment_text or "").strip():
-                raw_parts.append(f"[slice {index}]\n{segment_text}")
+        if not raw_parts:
+            for index, segment in enumerate(slice_image_base64(focused_image), start=1):
+                try:
+                    segment_text = await asyncio.wait_for(
+                        provider.vision(segment, prompt, model=model or None),
+                        timeout=70,
+                    )
+                except TimeoutError:
+                    errors.append(f"{provider_name}: slice {index} timeout")
+                    continue
+                except Exception as exc:
+                    error_text = str(exc).strip() or type(exc).__name__
+                    errors.append(f"{provider_name}: slice {index} failed: {error_text}")
+                    continue
 
-    if not raw_parts:
-        detail = "Kimi OCR failed for both full image and sliced fallback."
-        if errors:
-            detail = f"{detail} Details: {'; '.join(errors[:3])}"
-        raise HTTPException(status_code=status.HTTP_504_GATEWAY_TIMEOUT, detail=detail)
+                if str(segment_text or "").strip():
+                    raw_parts.append(f"[slice {index}]\n{segment_text}")
 
-    raw_text = "\n\n".join(raw_parts)
+        if raw_parts:
+            raw_text = "\n\n".join(raw_parts)
+            used_provider = provider_name
+            used_model = model or ""
+            break
+
+    if not raw_text and local_enabled:
+        try:
+            local_max_slices = max(1, int(local_cfg.get("max_slices", 6) or 6))
+        except Exception:
+            local_max_slices = 6
+
+        local_text, local_model, local_error = run_local_ocr_text(
+            focused_image,
+            mode="watchlist",
+            max_slices=local_max_slices,
+        )
+        if local_text.strip():
+            raw_text = local_text
+            used_provider = "local_ocr"
+            used_model = local_model
+        elif local_error:
+            errors.append(f"local-ocr: {local_error}")
+
+    if not raw_text:
+        # Degrade to an empty response instead of hard-failing the full import flow.
+        return OCRWatchlistResponse(provider="local_ocr", model="degraded", items=[], raw_text="")
+
     items = _parse_watchlist_text(raw_text)
-    items = await _enrich_watchlist_items(provider, model or "", items)
-    return OCRWatchlistResponse(provider=provider_name, model=model or "", items=items, raw_text=raw_text)
+    if not items:
+        parsed_rows = _parse_watchlist_freeform_rows(raw_text)
+        items = [
+            _normalize_ocr_item(row)
+            for row in parsed_rows
+            if _extract_security_code(row) and _clean_text(row.get("name", ""), max_length=100)
+        ]
+
+    if items:
+        enrich_provider = None
+        enrich_model = used_model
+        if used_provider in {"deepseek", "kimi"}:
+            try:
+                enrich_provider = get_provider(used_provider)
+            except Exception:
+                enrich_provider = None
+        if enrich_provider is None:
+            try:
+                enrich_provider = get_provider("deepseek")
+                enrich_model = "deepseek-v4-flash"
+            except Exception:
+                try:
+                    enrich_provider = get_provider("kimi")
+                    kimi_cfg = settings.get("ai.providers.kimi") or {}
+                    enrich_model = str(kimi_cfg.get("default_model", "") or "kimi-k2.6").strip() or "kimi-k2.6"
+                except Exception:
+                    enrich_provider = None
+
+        if enrich_provider is not None:
+            try:
+                items = await _enrich_watchlist_items(enrich_provider, enrich_model, items)
+            except Exception:
+                pass
+
+    return OCRWatchlistResponse(provider=used_provider, model=used_model, items=items, raw_text=raw_text)
 
 
 @router.post("/import-csv")
@@ -1247,13 +1772,16 @@ async def watchlist_import_csv(request: dict, db: Session = Depends(get_db)) -> 
 
     try:
         rows: list[dict] = []
+        raw_text = ""
+        with open(file_path, newline="", encoding="utf-8-sig") as fh:
+            raw_text = fh.read()
         with open(file_path, newline="", encoding="utf-8-sig") as fh:
             reader = csv.DictReader(fh)
             rows = [dict(row) for row in reader]
     except Exception as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"CSV read error: {exc}") from exc
 
-    return await _import_watchlist_rows(rows, db, enrich=True)
+    return await _import_watchlist_rows(rows, db, enrich=True, raw_text=raw_text)
 
 
 @router.post("/import-items")
@@ -1262,7 +1790,8 @@ async def watchlist_import_items(request: dict, db: Session = Depends(get_db)) -
     if not isinstance(rows, list):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="items must be a list")
     enrich = bool(request.get("enrich", True))
-    return await _import_watchlist_rows(rows, db, enrich=enrich)
+    raw_text = str(request.get("raw_text", "") or "")
+    return await _import_watchlist_rows(rows, db, enrich=enrich, raw_text=raw_text)
 
 
 @router.post("/import-text")
@@ -1295,7 +1824,7 @@ async def watchlist_import_text(request: dict, db: Session = Depends(get_db)) ->
 
     normalized = await _normalize_watchlist_rows_with_deepseek(raw_text, rows)
     enrich = bool(request.get("enrich", True))
-    return await _import_watchlist_rows(normalized, db, enrich=enrich, upsert=True)
+    return await _import_watchlist_rows(normalized, db, enrich=enrich, upsert=True, raw_text=raw_text)
 
 
 @router.get("/{id}", response_model=WatchlistResponse)

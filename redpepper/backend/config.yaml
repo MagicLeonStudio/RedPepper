@@ -14,6 +14,9 @@ ai:
     knowledge_digest: deepseek-v4-pro
     screenshot_ocr: kimi-k2.6
     strategy_analysis: kimi-k2.6
+  local_ocr:
+    enabled: true
+    max_slices: 6
 app:
   data_dir: ./data
   name: RedPepper

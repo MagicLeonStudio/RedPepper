@@ -25,6 +25,7 @@ from backend.app.ai.ocr_utils import (
     slice_image_base64,
 )
 from backend.app.ai.factory import get_provider
+from backend.app.ai.local_ocr import run_local_ocr_text
 from backend.app.config import settings
 from backend.app.dependencies import get_db
 from backend.app.models import Portfolio, Watchlist
@@ -81,6 +82,13 @@ _SYMBOL_NAME_ALIASES = {
     "标普": "标普500",
     "沪深300": "沪深三百",
 }
+_THS_FUND_ACCOUNT_KEYWORDS = (
+    "同花顺基金",
+    "同花顺钱包",
+    "同花顺理财",
+    "钱包",
+    "理财",
+)
 
 
 def _clean_text(value: object, *, default: str = "", max_length: int | None = None) -> str:
@@ -99,6 +107,31 @@ def _normalize_portfolio_type(value: object) -> str:
     if text in {"基金", "fund"}:
         return "基金"
     return "ETF"
+
+
+def _is_ths_fund_source(raw_text: str) -> bool:
+    text = str(raw_text or "")
+    return any(keyword in text for keyword in _THS_FUND_ACCOUNT_KEYWORDS)
+
+
+def _infer_account_from_source_text(raw_text: str) -> str:
+    if _is_ths_fund_source(raw_text):
+        return "同花顺基金"
+    return "中信证券"
+
+
+def _normalize_portfolio_account(value: object, *, source_text: str = "") -> str:
+    if _is_ths_fund_source(source_text):
+        return "同花顺基金"
+
+    text = _clean_text(value, max_length=50)
+    if not text:
+        return _infer_account_from_source_text(source_text)
+    if any(token in text for token in _THS_FUND_ACCOUNT_KEYWORDS) or "同花顺基金" in text:
+        return "同花顺基金"
+    if any(token in text for token in ("中信", "citic", "a股", "股票")):
+        return "中信证券"
+    return text
 
 
 def _normalize_portfolio_status(value: object) -> str:
@@ -1185,7 +1218,7 @@ async def _enrich_portfolio_items_with_deepseek(items: list[OCRHolding], raw_tex
                 profit=coerce_float(row.get("profit")),
                 cost_price=coerce_float(row.get("cost_price")),
                 shares=coerce_int(row.get("shares")),
-                account=_clean_text(row.get("account", "中信"), default="中信", max_length=50),
+                account=_normalize_portfolio_account(row.get("account", ""), source_text=raw_text),
                 status=_normalize_portfolio_status(row.get("status", "持有中")),
             )
         )
@@ -1202,7 +1235,7 @@ def _build_portfolio_from_row(row: dict) -> Portfolio:
         code=str(row.get("code", "") or "").strip(),
         name=str(row.get("name", "") or "").strip(),
         type=_normalize_portfolio_type(str(row.get("type", "") or "ETF").strip() or "ETF"),
-        account=str(row.get("account", "") or "中信").strip() or "中信",
+        account=_normalize_portfolio_account(row.get("account", "")),
         sector=str(row.get("sector", "") or row.get("industry", "")).strip() or None,
         amount=coerce_float(row.get("amount") or row.get("market_value")),
         profit=coerce_float(row.get("profit") or row.get("pnl") or row.get("return_value")),
@@ -1318,9 +1351,29 @@ async def _import_portfolio_rows(rows: list[dict], db: Session) -> dict:
 
     db.flush()
 
+    synced_codes: set[str] = set()
     for key in sorted(incoming_keys):
         synced_item = existing_by_key[key][0] if key in existing_by_key else incoming_by_key[key]
         _sync_watchlist_from_portfolio_item(db, synced_item)
+        synced_code = _clean_text(getattr(synced_item, "code", ""), max_length=20)
+        if synced_code:
+            synced_codes.add(synced_code)
+
+    db.flush()
+
+    # Auto-created watchlist entries from portfolio sync start with blank
+    # research fields (sector/trigger/reason). Enrich them so they match the
+    # quality of directly-imported watchlist items.
+    if synced_codes:
+        try:
+            from backend.app.routers.watchlist import enrich_watchlist_db_items
+
+            watch_items = (
+                db.query(Watchlist).filter(Watchlist.code.in_(synced_codes)).all()
+            )
+            await enrich_watchlist_db_items(db, watch_items)
+        except Exception:
+            pass
 
     linked = _reconcile_watchlist_by_portfolio_codes(db, imported_codes)
     db.commit()
@@ -1337,22 +1390,158 @@ async def _import_portfolio_rows(rows: list[dict], db: Session) -> dict:
     }
 
 
+_FUND_NAME_CODE_RE = re.compile(r"^(.*?)[（(](\d{6})[)）]")
+
+
+def _clean_fund_number(cell: object) -> str:
+    """Strip OCR decorations from a THS fund numeric cell.
+
+    Removes parenthesised percentages, leading + signs, thousands separators and
+    the trailing 元 unit, e.g. "-29.40(-0.7887%)" -> "-29.40", "+671.91" -> "671.91".
+    """
+    text = str(cell or "")
+    text = re.sub(r"[（(].*?[)）]", "", text)
+    text = text.replace(",", "").replace("元", "").strip()
+    text = text.lstrip("+").strip()
+    return text
+
+
+def _fund_header_field(header: str) -> str | None:
+    """Map a THS fund card column header to a portfolio field name."""
+    text = str(header or "")
+    if "持仓盈亏" in text:
+        return "profit"
+    if "昨日盈亏" in text:  # daily change, not persisted
+        return None
+    if "份额" in text:
+        return "shares"
+    if "市值" in text:
+        return "amount"
+    if "净值" in text:
+        return "current_price"
+    return None
+
+
+def _parse_ths_fund_cards_text(raw_text: str) -> list[dict]:
+    """Parse the THS (同花顺) fund holdings card layout.
+
+    Each holding spans three lines::
+
+        永赢数字经济智选混合C（018123）
+        持有份额 | 当前市值 | 最新净值（06-23） | 昨日盈亏 | 持仓盈亏
+        1470.02  | 3698.42  | 2.5159(-0.79%)    | -29.40   | +671.91
+
+    The header row maps value columns to fields, so the parser is robust to
+    column count/order changes. cost_price is derived from
+    (amount - profit) / shares when all three are available.
+    """
+    lines = str(raw_text or "").splitlines()
+    total = len(lines)
+    rows: list[dict] = []
+
+    for index, line in enumerate(lines):
+        match = _FUND_NAME_CODE_RE.match(line.strip())
+        if not match:
+            continue
+
+        name = _clean_text(match.group(1).strip(" 　-|:：·"), max_length=100)
+        code = match.group(2)
+        if not name or _is_portfolio_strong_noise_name(name):
+            continue
+
+        header_idx = -1
+        for probe in range(index + 1, min(index + 4, total)):
+            probe_line = lines[probe]
+            if "持有份额" in probe_line or ("份额" in probe_line and "盈亏" in probe_line):
+                header_idx = probe
+                break
+
+        record: dict[str, str] = {
+            "shares": "",
+            "amount": "",
+            "current_price": "",
+            "profit": "",
+            "cost_price": "",
+        }
+
+        if header_idx >= 0 and header_idx + 1 < total:
+            headers = [cell.strip() for cell in lines[header_idx].split("\t")]
+            values = [cell.strip() for cell in lines[header_idx + 1].split("\t")]
+            for col, header in enumerate(headers):
+                field = _fund_header_field(header)
+                if field and col < len(values):
+                    record[field] = _clean_fund_number(values[col])
+
+            shares_val = coerce_float(record["shares"])
+            amount_val = coerce_float(record["amount"])
+            profit_val = coerce_float(record["profit"])
+            if (
+                not record["cost_price"]
+                and shares_val
+                and amount_val is not None
+                and profit_val is not None
+            ):
+                record["cost_price"] = f"{(amount_val - profit_val) / shares_val:.4f}"
+
+        rows.append(
+            {
+                "code": code,
+                "name": name,
+                "type": "基金",
+                "shares": record["shares"],
+                "cost_price": record["cost_price"],
+                "current_price": record["current_price"],
+                "profit": record["profit"],
+                "amount": record["amount"],
+                "account": "同花顺基金",
+                "status": "持有中",
+            }
+        )
+
+    return rows
+
+
 def _extract_portfolio_rows_from_text(raw_text: str) -> list[dict]:
-    csv_rows = _parse_portfolio_csv_rows(raw_text)
-    if csv_rows:
-        return _merge_portfolio_csv_rows(csv_rows)
+    # THS fund holdings use a card layout where each fund's numbers live on a
+    # separate line from its name/code, so the generic row parsers cannot
+    # associate them. Handle that layout explicitly first.
+    if "持有份额" in raw_text or "持仓盈亏" in raw_text:
+        fund_rows = _parse_ths_fund_cards_text(raw_text)
+        if fund_rows:
+            return fund_rows
+
+    csv_rows = _merge_portfolio_csv_rows(_parse_portfolio_csv_rows(raw_text))
 
     parsed = _merge_ocr_items(
         _parse_portfolio_broker_dump_text(raw_text)
         + _parse_portfolio_text(raw_text)
         + _parse_portfolio_code_name_pairs(raw_text)
     )
-    rows: list[dict] = []
+    fallback_rows: list[dict] = []
     for item in parsed:
         if not _clean_text(item.name):
             continue
-        rows.append(item.model_dump())
-    return rows
+        fallback_rows.append(item.model_dump())
+
+    def _valid_code_count(rows: list[dict]) -> int:
+        count = 0
+        for row in rows:
+            if _SECURITY_CODE_RE.search(_clean_text(row.get("code", ""), max_length=20)):
+                count += 1
+        return count
+
+    # The header-mapped CSV parser reads columns positionally, which breaks on
+    # OCR table dumps where a leading checkbox column has no data token (every
+    # cell shifts left). The broker/text parsers instead locate the 6-digit code
+    # inside each row, so prefer whichever result recovers more valid codes.
+    csv_score = (_valid_code_count(csv_rows), len(csv_rows))
+    fallback_score = (_valid_code_count(fallback_rows), len(fallback_rows))
+
+    if csv_rows and csv_score >= fallback_score:
+        return csv_rows
+    if fallback_rows:
+        return fallback_rows
+    return csv_rows
 
 
 def _strip_markdown_fences(text: str) -> str:
@@ -1363,10 +1552,163 @@ def _strip_markdown_fences(text: str) -> str:
     return cleaned.strip()
 
 
+def _format_csv_number(value: object) -> str:
+    number = coerce_float(value)
+    if number is None:
+        return _clean_text(value, max_length=32)
+    if abs(number - int(number)) < 1e-8:
+        return str(int(number))
+    return f"{number:.6f}".rstrip("0").rstrip(".")
+
+
+def _extract_security_code(row: dict) -> str:
+    """Return the first 6-digit security code found in a parsed row.
+
+    The code field is preferred, but some parsers leave the code embedded in
+    other columns (name/amount), so those are scanned as a fallback.
+    """
+    if not isinstance(row, dict):
+        return ""
+
+    for field in ("code", "name", "amount", "shares", "current_price"):
+        raw = _clean_text(row.get(field, ""), max_length=64)
+        if not raw:
+            continue
+        match = _SECURITY_CODE_RE.search(raw)
+        if match:
+            return match.group(1)
+    return ""
+
+
+_PORTFOLIO_STRONG_NOISE_NAME_KEYWORDS = (
+    "同花顺钱包",
+    "同花顺理财",
+    "收益宝",
+    "账户资产",
+    "累计收益",
+    "当前收益",
+    "持有基金明细",
+    "持仓盈亏",
+    "昨日盈亏",
+    "总资产",
+    "资金余额",
+)
+
+_PORTFOLIO_NOISE_NAME_KEYWORDS = (
+    "钱包",
+    "充值",
+    "取现",
+    "银证转账",
+    "国债逆回购",
+    "止盈止损",
+    "账户清仓",
+    "同花顺",
+    "中国银行",
+)
+
+
+def _is_portfolio_strong_noise_name(name: str) -> bool:
+    """Account/section labels that are never a real holding name.
+
+    Applied even when the row carries a 6-digit code (e.g. 同花顺钱包 000773).
+    """
+    text = _clean_text(name, max_length=100).strip()
+    if not text:
+        return True
+    return any(keyword in text for keyword in _PORTFOLIO_STRONG_NOISE_NAME_KEYWORDS)
+
+
+def _is_portfolio_noise_name(name: str) -> bool:
+    """Return True when a codeless row is clearly not a real holding.
+
+    Section headers, account labels and totals frequently leak into OCR text.
+    Rows carrying a valid 6-digit code are only checked against the stricter
+    strong-noise list upstream, so this broader list guards codeless rows.
+    """
+    text = _clean_text(name, max_length=100).strip()
+    if not text:
+        return True
+    if text.lower() in {"null", "none", "-", "--"}:
+        return True
+    if len(text) < 2:
+        return True
+    # Pure numbers / percentages / currency amounts are not holding names.
+    if re.fullmatch(r"[\d.,%元＋+\-]+", text):
+        return True
+    if _is_portfolio_strong_noise_name(text):
+        return True
+    return any(keyword in text for keyword in _PORTFOLIO_NOISE_NAME_KEYWORDS)
+
+
+def _rows_to_portfolio_csv(rows: list[dict], *, source_text: str = "") -> str:
+    headers = [
+        "code",
+        "name",
+        "type",
+        "shares",
+        "cost_price",
+        "current_price",
+        "profit",
+        "amount",
+        "account",
+        "status",
+    ]
+
+    output = StringIO()
+    writer = csv.DictWriter(output, fieldnames=headers)
+    writer.writeheader()
+
+    seen: set[str] = set()
+    default_account = _infer_account_from_source_text(source_text)
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+
+        code = _extract_security_code(row)
+        name = _clean_text(row.get("name", ""), max_length=100)
+        # OCR often splits "基金名称（代码）" so a dangling open bracket is left
+        # on the name once the code is separated into its own cell.
+        name = name.strip(" 　-|:：·").rstrip("（(【[").strip()
+        if not name and not code:
+            continue
+
+        # Account/product labels (同花顺钱包, 收益宝 …) are never real holdings,
+        # even when OCR attaches a product code to them.
+        if _is_portfolio_strong_noise_name(name):
+            continue
+
+        # Drop obvious non-holding noise rows (section headers, account labels,
+        # totals). Rows that carry a real 6-digit code are always kept.
+        if not code and _is_portfolio_noise_name(name):
+            continue
+
+        key = code or name
+        if key in seen:
+            continue
+        seen.add(key)
+
+        writer.writerow(
+            {
+                "code": code,
+                "name": name,
+                "type": _normalize_portfolio_type(row.get("type", "") or "ETF"),
+                "shares": _format_csv_number(row.get("shares", "")),
+                "cost_price": _format_csv_number(row.get("cost_price", "")),
+                "current_price": _format_csv_number(row.get("current_price", "")),
+                "profit": _format_csv_number(row.get("profit", "")),
+                "amount": _format_csv_number(row.get("amount", "")),
+                "account": _normalize_portfolio_account(
+                    row.get("account", "") or default_account,
+                    source_text=source_text,
+                ),
+                "status": _normalize_portfolio_status(row.get("status", "") or "持有中"),
+            }
+        )
+
+    return output.getvalue().strip()
+
+
 async def _extract_portfolio_csv_with_kimi(image_base64: str) -> tuple[str, str, str]:
-    provider_name = "kimi"
-    model = "kimi-k2.6"
-    provider = get_provider(provider_name)
     prompt = (
         "你是券商持仓识别助手。请从截图中提取持仓表并只返回 CSV 文本，不要解释。"
         "CSV 必须包含表头且字段名固定为："
@@ -1375,17 +1717,10 @@ async def _extract_portfolio_csv_with_kimi(image_base64: str) -> tuple[str, str,
         "1) code 必须是 6 位证券代码；\n"
         "2) type 只能是 股票/ETF/基金；\n"
         "3) status 固定填 持有中；\n"
-        "4) account 固定填 中信；\n"
+        "4) account 需区分账户：若截图内容出现 同花顺钱包/同花顺理财/同花顺基金/基金持仓 则填 同花顺基金，否则填 中信证券；\n"
         "5) 无法识别的数值留空；\n"
         "6) 只输出 CSV 文本，不要 markdown。"
     )
-    try:
-        raw = await asyncio.wait_for(provider.vision(image_base64, prompt, model=model), timeout=90)
-        csv_text = _strip_markdown_fences(raw)
-        if csv_text:
-            return csv_text, provider_name, model
-    except Exception:
-        pass
 
     focused = crop_image_base64(
         image_base64,
@@ -1396,17 +1731,103 @@ async def _extract_portfolio_csv_with_kimi(image_base64: str) -> tuple[str, str,
         max_width=1800,
         max_height=2600,
     )
-    parts: list[str] = []
-    for segment in slice_image_base64(focused):
+
+    settings.reload()
+    local_cfg = settings.get("ai.local_ocr") or {}
+    local_enabled = bool(local_cfg.get("enabled", True))
+    local_prefer = bool(local_cfg.get("prefer_local", True))
+
+    if local_enabled and local_prefer:
         try:
-            raw = await asyncio.wait_for(provider.vision(segment, prompt, model=model), timeout=50)
-            text = _strip_markdown_fences(raw)
-            if text:
-                parts.append(text)
+            local_max_slices = max(1, int(local_cfg.get("max_slices", 6) or 6))
         except Exception:
+            local_max_slices = 6
+
+        # Run local OCR on the full image (not the focused crop) so the account
+        # header (同花顺钱包/账户资产 …) is captured for account detection. Noise
+        # header rows are dropped later in _rows_to_portfolio_csv.
+        local_text, local_model, _local_error = run_local_ocr_text(
+            image_base64,
+            mode="portfolio",
+            max_slices=local_max_slices,
+        )
+        if local_text.strip():
+            local_rows = _extract_portfolio_rows_from_text(local_text)
+            local_csv = _rows_to_portfolio_csv(local_rows, source_text=local_text)
+            if local_csv.strip():
+                return local_csv, "local_ocr", local_model
+
+    provider_attempts: list[tuple[str, str]] = []
+    deepseek_cfg = settings.get("ai.providers.deepseek") or {}
+    if str(deepseek_cfg.get("api_key", "") or "").strip():
+        provider_attempts.append(("deepseek", "deepseek-v4-flash"))
+
+    kimi_cfg = settings.get("ai.providers.kimi") or {}
+    kimi_model = str(kimi_cfg.get("default_model", "") or "kimi-k2.6").strip() or "kimi-k2.6"
+    if str(kimi_cfg.get("api_key", "") or "").strip():
+        provider_attempts.append(("kimi", kimi_model))
+
+    if not provider_attempts:
+        return "", "", ""
+
+    errors: list[str] = []
+    for provider_name, model in provider_attempts:
+        try:
+            provider = get_provider(provider_name)
+        except Exception as exc:
+            errors.append(f"{provider_name}: init failed: {exc}")
             continue
 
-    return "\n".join(parts).strip(), provider_name, model
+        try:
+            raw = await asyncio.wait_for(provider.vision(image_base64, prompt, model=model), timeout=90)
+            csv_text = _strip_markdown_fences(raw)
+            if csv_text:
+                return csv_text, provider_name, model
+        except Exception as exc:
+            errors.append(f"{provider_name}: full-image failed: {type(exc).__name__}")
+
+        parts: list[str] = []
+        for segment in slice_image_base64(focused):
+            try:
+                raw = await asyncio.wait_for(provider.vision(segment, prompt, model=model), timeout=60)
+                text = _strip_markdown_fences(raw)
+                if text:
+                    parts.append(text)
+            except Exception:
+                continue
+
+        merged_csv = "\n".join(parts).strip()
+        if merged_csv:
+            return merged_csv, provider_name, model
+
+    if local_enabled:
+        try:
+            local_max_slices = max(1, int(local_cfg.get("max_slices", 6) or 6))
+        except Exception:
+            local_max_slices = 6
+
+        local_text, local_model, local_error = run_local_ocr_text(
+            image_base64,
+            mode="portfolio",
+            max_slices=local_max_slices,
+        )
+
+        if local_text.strip():
+            local_rows = _extract_portfolio_rows_from_text(local_text)
+            local_csv = _rows_to_portfolio_csv(local_rows, source_text=local_text)
+            if local_csv.strip():
+                return local_csv, "local_ocr", local_model
+            errors.append("local-ocr: empty-csv")
+        elif local_error:
+            errors.append(f"local-ocr: {local_error}")
+
+        # Final deterministic degrade path: return an editable CSV header.
+        return _rows_to_portfolio_csv([], source_text=""), "local_ocr", local_model
+
+    if errors:
+        return "", provider_attempts[0][0], provider_attempts[0][1]
+
+    return "", "", ""
 
 
 def _parse_portfolio_csv_rows(csv_text: str) -> list[dict]:
@@ -1501,7 +1922,7 @@ def _parse_portfolio_csv_rows(csv_text: str) -> list[dict]:
                 "current_price": _value(row, "current_price"),
                 "profit": _value(row, "profit"),
                 "amount": _value(row, "amount"),
-                "account": _value(row, "account") or "中信",
+                "account": _value(row, "account"),
                 "status": _value(row, "status") or "持有中",
             }
         )
@@ -1590,71 +2011,107 @@ async def _normalize_portfolio_rows_with_deepseek(csv_text: str, rows: list[dict
     if not rows:
         return []
 
-    settings.reload()
-    deepseek_cfg = settings.get("ai.providers.deepseek") or {}
-    deepseek_key = str(deepseek_cfg.get("api_key", "") or "").strip()
-    if not deepseek_key:
-        return rows
+    source_text = str(csv_text or "")
+    default_account = _infer_account_from_source_text(source_text)
 
-    provider = get_provider("deepseek")
+    def _normalize_payload(payload_rows: list[dict]) -> list[dict]:
+        normalized_rows: list[dict] = []
+        for row in payload_rows:
+            if not isinstance(row, dict):
+                continue
+            code = _clean_text(row.get("code", ""), max_length=20)
+            name = _clean_text(row.get("name", ""), max_length=100)
+            if not name:
+                continue
+            normalized_rows.append(
+                {
+                    "code": code,
+                    "name": name,
+                    "type": _normalize_portfolio_type(row.get("type", "ETF")),
+                    "amount": coerce_float(row.get("amount")),
+                    "profit": coerce_float(row.get("profit")),
+                    "cost_price": coerce_float(row.get("cost_price")),
+                    "shares": coerce_int(row.get("shares")),
+                    "account": _normalize_portfolio_account(row.get("account", default_account), source_text=source_text),
+                    "status": _normalize_portfolio_status(row.get("status", "持有中")),
+                }
+            )
+        return normalized_rows
+
+    def _quality_score(payload_rows: list[dict]) -> tuple[int, int]:
+        valid = 0
+        with_code = 0
+        for row in payload_rows:
+            if not isinstance(row, dict):
+                continue
+            if _clean_text(row.get("name", ""), max_length=100):
+                valid += 1
+            if _SECURITY_CODE_RE.search(_clean_text(row.get("code", ""), max_length=20)):
+                with_code += 1
+        return valid, with_code
+
+    settings.reload()
     prompt = (
-        "你是持仓结构化清洗助手。基于 CSV 原文和初步解析结果，输出可直接入库的 JSON 数组。"
+        "你是同花顺持仓结构化清洗助手。基于原始文本和初步解析结果，输出可直接入库的 JSON 数组。"
         "每项字段固定为：code,name,type,amount,profit,cost_price,shares,account,status。"
         "规则：\n"
         "1) code 必须是 6 位；\n"
         "2) type 只能是 股票/ETF/基金；\n"
         "3) status 只能是 持有中/减仓中/已清仓；\n"
-        "4) account 缺失时填 中信；\n"
+        "4) account 要区分账户：若文本中出现 同花顺钱包/同花顺理财/同花顺基金 或 account 列已是 同花顺基金 则填 同花顺基金，否则保留原有 account（默认 中信证券），不要擅自更改已给定的 account；\n"
         "5) 数值字段无法确定时可为 null；\n"
         "6) 如果多行持仓名称相似（如\"科创50\"与\"科创50ETF\"、\"纳指\"与\"纳指ETF\"指同一标的），"
         "合并为一行，取信息最完整的那行，保留更完整的名称；\n"
         "7) 只返回 JSON，不要解释。\n\n"
-        f"CSV 原文:\n{csv_text}\n\n"
+        f"原始文本:\n{source_text}\n\n"
         f"初步解析:\n{json.dumps(rows, ensure_ascii=False)}"
     )
 
-    try:
-        raw = await asyncio.wait_for(
-            provider.chat(
-                [{"role": "user", "content": prompt}],
-                model="deepseek-v4-flash",
-                temperature=0.2,
-            ),
-            timeout=90,
-        )
-        payload = json.loads(extract_json_block(raw))
-    except Exception:
-        payload = rows
+    provider_attempts: list[tuple[str, str, float]] = []
+    deepseek_cfg = settings.get("ai.providers.deepseek") or {}
+    if str(deepseek_cfg.get("api_key", "") or "").strip():
+        provider_attempts.append(("deepseek", "deepseek-v4-flash", 0.2))
 
-    if isinstance(payload, dict):
-        payload = payload.get("items", [])
-    if not isinstance(payload, list):
-        payload = rows
+    kimi_cfg = settings.get("ai.providers.kimi") or {}
+    kimi_model = str(kimi_cfg.get("default_model", "") or "kimi-k2.6").strip() or "kimi-k2.6"
+    if str(kimi_cfg.get("api_key", "") or "").strip():
+        provider_attempts.append(("kimi", kimi_model, 0.3))
 
-    normalized: list[dict] = []
-    for row in payload:
-        if not isinstance(row, dict):
+    best_rows = _normalize_payload(rows)
+    best_quality = _quality_score(best_rows)
+
+    for provider_name, model_name, temperature in provider_attempts:
+        try:
+            provider = get_provider(provider_name)
+            raw = await asyncio.wait_for(
+                provider.chat(
+                    [{"role": "user", "content": prompt}],
+                    model=model_name,
+                    temperature=temperature,
+                ),
+                timeout=90,
+            )
+            payload = json.loads(extract_json_block(raw))
+            if isinstance(payload, dict):
+                payload = payload.get("items", [])
+            if not isinstance(payload, list):
+                continue
+
+            candidate_rows = _normalize_payload(payload)
+            if not candidate_rows:
+                continue
+
+            candidate_quality = _quality_score(candidate_rows)
+            if candidate_quality > best_quality:
+                best_rows = candidate_rows
+                best_quality = candidate_quality
+
+            if candidate_quality[0] >= max(1, best_quality[0]) and candidate_quality[1] >= best_quality[1]:
+                return candidate_rows
+        except Exception:
             continue
-        code = _clean_text(row.get("code", ""), max_length=20)
-        name = _clean_text(row.get("name", ""), max_length=100)
-        # Keep name-only rows so missing codes can be completed later.
-        if not name:
-            continue
-        normalized.append(
-            {
-                "code": code,
-                "name": name,
-                "type": _normalize_portfolio_type(row.get("type", "ETF")),
-                "amount": coerce_float(row.get("amount")),
-                "profit": coerce_float(row.get("profit")),
-                "cost_price": coerce_float(row.get("cost_price")),
-                "shares": coerce_int(row.get("shares")),
-                "account": _clean_text(row.get("account", "中信"), default="中信", max_length=50),
-                "status": _normalize_portfolio_status(row.get("status", "持有中")),
-            }
-        )
 
-    return normalized or rows
+    return best_rows or rows
 
 
 def _get_item(db: Session, item_id: int) -> Portfolio:
@@ -1896,6 +2353,8 @@ async def portfolio_import_text(request: dict, db: Session = Depends(get_db)) ->
             "errors": ["No valid holdings parsed from text"],
             "total": 0,
         }
+
+    rows = await _normalize_portfolio_rows_with_deepseek(raw_text, rows)
 
     rows = await _complete_portfolio_rows_with_symbol_candidates(rows, raw_text, db)
 

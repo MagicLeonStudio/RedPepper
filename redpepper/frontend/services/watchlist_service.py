@@ -642,7 +642,7 @@ class WatchlistService:
             progress_callback(
                 {
                     "stage": "upload",
-                    "message": "DeepSeek 正在整理并补全代码…",
+                    "message": "DeepSeek 正在整理并补全代码（失败将自动切换 Kimi）…",
                     "current": 1,
                     "total": 2,
                 }

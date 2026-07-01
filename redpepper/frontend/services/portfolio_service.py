@@ -431,7 +431,7 @@ class PortfolioService:
                 progress_callback(
                     {
                         "stage": "normalize",
-                        "message": "Missing code detected, trying DeepSeek normalization",
+                        "message": "Missing code detected, trying DeepSeek normalization (fallback to Kimi)",
                         "current": 2,
                         "total": 3,
                         "csv_text": text,

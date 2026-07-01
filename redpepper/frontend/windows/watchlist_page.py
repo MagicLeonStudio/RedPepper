@@ -57,7 +57,7 @@ TABLE_STYLE = f"""
 STATUS_COLORS = {
     "watching": "#8B5CF6",
     "triggered": "#F05C77",
-    "bought": "#8B6FD6",
+    "bought": "#FACC15",
     "archived": "#7A7A9E",
 }
 
