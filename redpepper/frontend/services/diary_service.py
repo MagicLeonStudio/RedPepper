@@ -23,6 +23,16 @@ class DiaryService:
     def import_from_agi2rich_html(self, file_path: str) -> dict:
         return self.client.post(f"{self.base_path}/import/agi2rich-html", json={"file_path": file_path})
 
+    def generate_review(self, diary_id: int, provider: str | None = None) -> dict:
+        """Trigger AI deep-review generation for a diary entry.
+
+        Returns the normalized diary (including ai_* fields) after regeneration.
+        """
+        payload = {"provider": provider} if provider else {}
+        result = self.client.post(f"{self.base_path}/{diary_id}/review", json=payload)
+        diary = (result or {}).get("diary", {})
+        return self._normalize_item(diary)
+
     def delete(self, diary_id: int) -> None:
         self.client.delete(f"{self.base_path}/{diary_id}")
 

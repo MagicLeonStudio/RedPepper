@@ -35,6 +35,21 @@ def resolve_provider_target(name_or_model: str) -> tuple[str, object, str | None
         if name_or_model == default_model:
             return provider_name, candidate_config, name_or_model
 
+    # Fallback: infer the provider from a model-name prefix so scene_models can
+    # reference specific models beyond each provider's default (e.g. the
+    # "deepseek-v4-pro" model still maps to the "deepseek" provider).
+    lowered = str(name_or_model or "").strip().lower()
+    _MODEL_PREFIX_TO_PROVIDER = {
+        "deepseek": "deepseek",
+        "kimi": "kimi",
+        "moonshot": "kimi",
+    }
+    for prefix, provider_name in _MODEL_PREFIX_TO_PROVIDER.items():
+        if lowered.startswith(prefix):
+            candidate_config = settings.get(f"ai.providers.{provider_name}")
+            if candidate_config:
+                return provider_name, candidate_config, name_or_model
+
     raise ValueError(f"Provider or model '{name_or_model}' is not configured")
 
 

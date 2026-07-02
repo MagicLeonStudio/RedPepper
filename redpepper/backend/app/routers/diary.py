@@ -9,7 +9,14 @@ from sqlalchemy.orm import Session
 
 from backend.app.dependencies import get_db
 from backend.app.models import Diary
-from backend.app.schemas import DiaryCreate, DiaryResponse, DiaryUpdate
+from backend.app.schemas import (
+    DiaryCreate,
+    DiaryResponse,
+    DiaryReviewRequest,
+    DiaryReviewResponse,
+    DiaryUpdate,
+)
+from backend.app.services.diary_generator import generate_diary_review
 
 router = APIRouter()
 
@@ -183,6 +190,25 @@ async def delete_diary(id: int, db: Session = Depends(get_db)) -> None:
     item = _get_item(db, id)
     db.delete(item)
     db.commit()
+
+
+@router.post("/{id}/review", response_model=DiaryReviewResponse)
+async def generate_diary_ai_review(
+    id: int,
+    data: DiaryReviewRequest | None = None,
+    db: Session = Depends(get_db),
+) -> dict:
+    _get_item(db, id)  # 404 if missing
+    provider = (data.provider if data else None) or None
+    try:
+        result = await generate_diary_review(db, id, provider_or_model=provider)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY, detail=f"AI review failed: {exc}"
+        ) from exc
+    return result
 
 
 @router.post("/import/agi2rich-html")

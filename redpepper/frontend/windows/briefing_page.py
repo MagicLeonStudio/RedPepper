@@ -25,7 +25,7 @@ from PyQt6.QtWidgets import (
     QApplication,
     QDialog,
 )
-from PyQt6.QtCore import Qt, QDate
+from PyQt6.QtCore import Qt, QDate, QThread, pyqtSignal
 from PyQt6.QtGui import QFont
 
 from frontend.i18n.translator import tr
@@ -109,6 +109,27 @@ GROUPBOX_STYLE = f"""
 """
 
 
+class _BriefingWorker(QThread):
+    """Background worker for the (long) AI briefing generation call."""
+
+    finished_ok = pyqtSignal(dict)
+    failed = pyqtSignal(str)
+
+    def __init__(self, session_type: str, date_str: str, parent=None):
+        super().__init__(parent)
+        self._session_type = session_type
+        self._date_str = date_str
+
+    def run(self):
+        try:
+            from frontend.services.briefing_service import BriefingService
+
+            result = BriefingService().generate(session_type=self._session_type, date=self._date_str)
+            self.finished_ok.emit(result if isinstance(result, dict) else {})
+        except Exception as exc:  # noqa: BLE001 - surfaced to UI
+            self.failed.emit(str(exc))
+
+
 class BriefingPage(QWidget):
     """Daily briefing page with import, full-detail display, and event linkage."""
 
@@ -119,6 +140,8 @@ class BriefingPage(QWidget):
         self._runs = []
         self._visible_runs = []
         self._event_count_by_date = {}
+        self._gen_worker = None
+        self._gen_progress = None
         self._build_ui()
         self._load_data()
 
@@ -657,42 +680,53 @@ class BriefingPage(QWidget):
         self._show_payload_dialog(title, "\n".join(sections))
 
     def _generate_briefing(self, session_type: str):
-        progress = QProgressDialog(
+        if self._gen_worker is not None and self._gen_worker.isRunning():
+            QMessageBox.information(self, "提示", "已有简报正在生成，请稍候。")
+            return
+
+        self._gen_progress = QProgressDialog(
             tr("briefing.generate_progress_message"),
-            "",
+            None,
             0,
             0,
             self,
         )
-        progress.setWindowTitle(tr("briefing.generate_progress_title"))
-        progress.setWindowModality(Qt.WindowModality.WindowModal)
-        progress.setCancelButton(None)
-        progress.setMinimumDuration(0)
-        progress.show()
+        self._gen_progress.setWindowTitle(tr("briefing.generate_progress_title"))
+        self._gen_progress.setWindowModality(Qt.WindowModality.WindowModal)
+        self._gen_progress.setCancelButton(None)
+        self._gen_progress.setMinimumDuration(0)
+        self._gen_progress.show()
         QApplication.processEvents()
 
-        try:
-            from frontend.services.briefing_service import BriefingService
+        self._gen_worker = _BriefingWorker(session_type, QDate.currentDate().toString("yyyy-MM-dd"), self)
+        self._gen_worker.finished_ok.connect(self._on_generate_finished)
+        self._gen_worker.failed.connect(self._on_generate_failed)
+        self._gen_worker.start()
 
-            svc = BriefingService()
-            result = svc.generate(session_type=session_type, date=QDate.currentDate().toString("yyyy-MM-dd"))
-            briefing = result.get("briefing", {}) if isinstance(result, dict) else {}
-            run = result.get("run", {}) if isinstance(result, dict) else {}
-            self._load_data()
-            QMessageBox.information(
-                self,
-                tr("common.success"),
-                tr(
-                    "briefing.generate_success",
-                    briefing.get("title", "-"),
-                    briefing.get("status", "success"),
-                    run.get("provider", "-"),
-                ),
-            )
-        except Exception as e:
-            QMessageBox.warning(self, tr("common.error"), tr("briefing.generate_failed") + f": {e}")
-        finally:
-            progress.close()
+    def _close_generate_progress(self):
+        if self._gen_progress is not None:
+            self._gen_progress.close()
+            self._gen_progress = None
+
+    def _on_generate_finished(self, result: dict):
+        self._close_generate_progress()
+        briefing = result.get("briefing", {}) if isinstance(result, dict) else {}
+        run = result.get("run", {}) if isinstance(result, dict) else {}
+        self._load_data()
+        QMessageBox.information(
+            self,
+            tr("common.success"),
+            tr(
+                "briefing.generate_success",
+                briefing.get("title", "-"),
+                briefing.get("status", "success"),
+                run.get("provider", "-"),
+            ),
+        )
+
+    def _on_generate_failed(self, message: str):
+        self._close_generate_progress()
+        QMessageBox.warning(self, tr("common.error"), tr("briefing.generate_failed") + f": {message}")
 
     def _open_manual_record_dialog(self):
         dialog = QDialog(self)

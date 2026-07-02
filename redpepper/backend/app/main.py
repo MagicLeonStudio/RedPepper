@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import logging
+from contextlib import asynccontextmanager
+
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend.app.database import init_db
+from backend.app.database import SessionLocal, init_db
 from backend.app.routers import (
     ai_chat,
     auth,
@@ -17,14 +21,54 @@ from backend.app.routers import (
     trade_log,
     watchlist,
 )
+from backend.app.services.briefing_generator import run_due_briefings
+
+logger = logging.getLogger(__name__)
+
+# Interval (minutes) for the server-side auto-briefing scheduler. run_due_briefings
+# is idempotent (trading-window + dedup + cooldown), so a short interval is safe.
+_AUTO_BRIEFING_INTERVAL_MINUTES = 5
+
+
+async def _run_due_briefings_job() -> None:
+    """Scheduler job: attempt to generate any due automated briefing."""
+    db = SessionLocal()
+    try:
+        await run_due_briefings(db)
+    except Exception:  # noqa: BLE001 - never let scheduler errors escape
+        logger.exception("auto-briefing scheduler job failed")
+    finally:
+        db.close()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    init_db()
+    scheduler = AsyncIOScheduler()
+    scheduler.add_job(
+        _run_due_briefings_job,
+        "interval",
+        minutes=_AUTO_BRIEFING_INTERVAL_MINUTES,
+        id="auto_briefing",
+        max_instances=1,
+        coalesce=True,
+    )
+    scheduler.start()
+    app.state.scheduler = scheduler
+    try:
+        yield
+    finally:
+        scheduler.shutdown(wait=False)
+
 
 # ------------------------------------------------------------------ #
 # App instance
 # ------------------------------------------------------------------ #
 app = FastAPI(
     title="RedPepper API",
-    version="0.0.6",
+    version="0.0.7",
     description="Backend API for the RedPepper investment management system.",
+    lifespan=lifespan,
 )
 
 # ------------------------------------------------------------------ #
@@ -37,14 +81,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-
-# ------------------------------------------------------------------ #
-# Startup event
-# ------------------------------------------------------------------ #
-@app.on_event("startup")
-async def startup() -> None:
-    init_db()
 
 
 # ------------------------------------------------------------------ #

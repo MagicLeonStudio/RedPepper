@@ -191,6 +191,13 @@ class Diary(Base):
     worst_op = Column(Text, nullable=True)
     reflection = Column(Text, nullable=True)
     focus = Column(Text, nullable=True)
+    # AI deep-review fields (populated on demand by the diary review generator).
+    ai_review = Column(Text, nullable=True)
+    ai_summary = Column(String(500), nullable=True)
+    ai_metrics = Column(Text, nullable=True)  # JSON string of scores/metrics
+    ai_provider = Column(String(50), nullable=True)
+    ai_model = Column(String(100), nullable=True)
+    ai_generated_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
 
 

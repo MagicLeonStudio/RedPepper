@@ -25,6 +25,66 @@ def extract_json_block(text: str) -> str:
     return text.strip()
 
 
+def _extract_first_json_object(text: str) -> str | None:
+    """Return the first balanced ``{...}`` block in ``text`` (quote/escape aware)."""
+    start = text.find("{")
+    if start < 0:
+        return None
+    depth = 0
+    quote: str | None = None
+    escaped = False
+    for idx in range(start, len(text)):
+        ch = text[idx]
+        if quote:
+            if escaped:
+                escaped = False
+            elif ch == "\\":
+                escaped = True
+            elif ch == quote:
+                quote = None
+            continue
+        if ch in ("'", '"'):
+            quote = ch
+        elif ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start : idx + 1]
+    return None
+
+
+def parse_json_object(raw_text: str) -> dict:
+    """Parse an LLM response into a JSON object, tolerant of extra prose.
+
+    Tries the fenced/plain block first, then falls back to the first balanced
+    ``{...}`` object found in the raw text. Raises ``ValueError`` if no JSON
+    object can be recovered.
+    """
+    text = str(raw_text or "").strip()
+    if not text:
+        raise ValueError("AI response is empty")
+
+    candidates = [extract_json_block(text)]
+    first_object = _extract_first_json_object(text)
+    if first_object and first_object not in candidates:
+        candidates.append(first_object)
+
+    last_error: Exception | None = None
+    for candidate in candidates:
+        try:
+            payload = json.loads(candidate)
+        except Exception as exc:  # noqa: BLE001 - try next candidate
+            last_error = exc
+            continue
+        if isinstance(payload, dict):
+            return payload
+        last_error = ValueError("AI response must be a JSON object")
+
+    raise ValueError(f"Failed to parse JSON object from AI response: {last_error}")
+
+
+
 def coerce_float(value: object) -> float | None:
     if value in (None, ""):
         return None

@@ -18,7 +18,7 @@ from PyQt6.QtWidgets import (
     QProgressDialog,
     QApplication,
 )
-from PyQt6.QtCore import Qt, QDate
+from PyQt6.QtCore import Qt, QDate, QThread, pyqtSignal
 from PyQt6.QtGui import QFont
 
 from frontend.i18n.translator import tr
@@ -76,10 +76,11 @@ GROUPBOX_STYLE = f"""
 class DiaryEntryWidget(QFrame):
     """Collapsible diary entry widget."""
 
-    def __init__(self, data: dict, parent=None):
+    def __init__(self, data: dict, parent=None, on_review=None, expanded: bool = False):
         super().__init__(parent)
         self._data = data
-        self._expanded = False
+        self._expanded = expanded
+        self._on_review = on_review
         self.setStyleSheet(
             f"""
             QFrame {{
@@ -104,7 +105,37 @@ class DiaryEntryWidget(QFrame):
         date_label.setStyleSheet(f"color: {TEXT_PRIMARY};")
         header.addWidget(date_label)
 
+        has_review = bool(str(self._data.get("ai_review", "") or "").strip())
+        if has_review:
+            badge = QLabel("🤖 已复盘")
+            badge.setStyleSheet(
+                f"color: {ACCENT_PURPLE}; font-size: 10px; font-weight: bold; "
+                f"border: 1px solid {ACCENT_PURPLE}; border-radius: 6px; padding: 1px 6px;"
+            )
+            header.addWidget(badge)
+
         header.addStretch()
+
+        # Always-visible AI review trigger so it is discoverable without expanding.
+        self.review_btn = QPushButton("🔄 重新复盘" if has_review else "🤖 AI 深度复盘")
+        self.review_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.review_btn.setStyleSheet(
+            f"""
+            QPushButton {{
+                background-color: {ACCENT_PURPLE};
+                color: #FFFFFF;
+                border: none;
+                border-radius: 6px;
+                padding: 6px 14px;
+                font-size: 12px;
+                font-weight: bold;
+            }}
+            QPushButton:hover {{ background-color: #A78BFA; }}
+            QPushButton:disabled {{ background-color: #4A4A6A; color: {TEXT_SECONDARY}; }}
+            """
+        )
+        self.review_btn.clicked.connect(self._on_review_clicked)
+        header.addWidget(self.review_btn)
 
         self.toggle_btn = QPushButton("▼" if self._expanded else "▶")
         self.toggle_btn.setFixedSize(32, 32)
@@ -151,13 +182,79 @@ class DiaryEntryWidget(QFrame):
             lbl.setStyleSheet(f"color: {TEXT_PRIMARY}; font-size: 12px;")
             detail_layout.addWidget(lbl)
 
-        self.detail_widget.hide()
+        self._build_ai_section(detail_layout)
+
+        self.detail_widget.setVisible(self._expanded)
         layout.addWidget(self.detail_widget)
+
+    def _build_ai_section(self, detail_layout):
+        ai_review = str(self._data.get("ai_review", "") or "").strip()
+
+        ai_bar = QHBoxLayout()
+        ai_title = QLabel("🤖 AI 深度复盘")
+        ai_title.setStyleSheet(f"color: {ACCENT_PURPLE}; font-size: 12px; font-weight: bold;")
+        ai_bar.addWidget(ai_title)
+
+        if ai_review:
+            generated_at = str(self._data.get("ai_generated_at", "") or "")[:19].replace("T", " ")
+            model = str(self._data.get("ai_model", "") or "")
+            meta = f"  上次复盘：{generated_at}  ·  {model}".rstrip(" ·")
+            meta_label = QLabel(meta)
+            meta_label.setStyleSheet(f"color: {TEXT_SECONDARY}; font-size: 10px;")
+            ai_bar.addWidget(meta_label)
+
+        ai_bar.addStretch()
+        detail_layout.addLayout(ai_bar)
+
+        self.ai_view = QTextEdit()
+        self.ai_view.setReadOnly(True)
+        self.ai_view.setMinimumHeight(160)
+        self.ai_view.setStyleSheet(
+            f"""
+            QTextEdit {{
+                background-color: {BG_DARK};
+                color: {TEXT_PRIMARY};
+                border: 1px solid {BORDER_COLOR};
+                border-radius: 6px;
+                padding: 8px;
+                font-size: 12px;
+            }}
+            """
+        )
+        if ai_review:
+            self.ai_view.setMarkdown(ai_review)
+        else:
+            self.ai_view.setPlainText("尚未生成 AI 复盘，点击右上角「AI 深度复盘」按钮生成。")
+        detail_layout.addWidget(self.ai_view)
+
+    def _on_review_clicked(self):
+        if callable(self._on_review):
+            self._on_review(self._data.get("id"))
 
     def _toggle(self):
         self._expanded = not self._expanded
         self.detail_widget.setVisible(self._expanded)
         self.toggle_btn.setText("▼" if self._expanded else "▶")
+
+
+class _DiaryReviewWorker(QThread):
+    """Background worker that runs the (long) AI diary review call."""
+
+    finished_ok = pyqtSignal(dict)
+    failed = pyqtSignal(str)
+
+    def __init__(self, diary_id: int, parent=None):
+        super().__init__(parent)
+        self._diary_id = diary_id
+
+    def run(self):
+        try:
+            from frontend.services.diary_service import DiaryService
+
+            diary = DiaryService().generate_review(self._diary_id)
+            self.finished_ok.emit(diary or {})
+        except Exception as exc:  # noqa: BLE001 - surfaced to UI
+            self.failed.emit(str(exc))
 
 
 class DiaryPage(QWidget):
@@ -166,6 +263,8 @@ class DiaryPage(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._diaries = []
+        self._review_worker = None
+        self._review_progress = None
         self._build_ui()
         self._load_data()
 
@@ -287,7 +386,7 @@ class DiaryPage(QWidget):
             self._diaries = []
         self._refresh_list()
 
-    def _refresh_list(self):
+    def _refresh_list(self, expand_id=None):
         while self.list_layout.count() > 1:
             item = self.list_layout.takeAt(0)
             if item.widget():
@@ -295,7 +394,11 @@ class DiaryPage(QWidget):
 
         sorted_diaries = sorted(self._diaries, key=lambda d: d.get("date", ""), reverse=True)
         for diary in sorted_diaries:
-            entry = DiaryEntryWidget(diary)
+            entry = DiaryEntryWidget(
+                diary,
+                on_review=self._on_generate_review,
+                expanded=(expand_id is not None and diary.get("id") == expand_id),
+            )
             self.list_layout.insertWidget(self.list_layout.count() - 1, entry)
 
         if not sorted_diaries:
@@ -303,6 +406,49 @@ class DiaryPage(QWidget):
             hint.setStyleSheet(f"color: {TEXT_SECONDARY}; font-size: 13px;")
             hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
             self.list_layout.insertWidget(self.list_layout.count() - 1, hint)
+
+    def _on_generate_review(self, diary_id):
+        if diary_id is None:
+            return
+        if self._review_worker is not None and self._review_worker.isRunning():
+            QMessageBox.information(self, "AI 深度复盘", "已有复盘任务正在进行，请稍候。")
+            return
+
+        self._review_progress = QProgressDialog("AI 正在深度复盘，请稍候…", None, 0, 0, self)
+        self._review_progress.setWindowTitle("AI 深度复盘")
+        self._review_progress.setWindowModality(Qt.WindowModality.WindowModal)
+        self._review_progress.setMinimumDuration(0)
+        self._review_progress.setCancelButton(None)
+        self._review_progress.show()
+        QApplication.processEvents()
+
+        self._review_worker = _DiaryReviewWorker(int(diary_id), self)
+        self._review_worker.finished_ok.connect(self._on_review_finished)
+        self._review_worker.failed.connect(self._on_review_failed)
+        self._review_worker.start()
+
+    def _close_review_progress(self):
+        if self._review_progress is not None:
+            self._review_progress.close()
+            self._review_progress = None
+
+    def _on_review_finished(self, diary: dict):
+        self._close_review_progress()
+        # Update the cached entry in place so the refreshed card shows the result,
+        # and auto-expand it so the review is immediately visible.
+        updated_id = diary.get("id")
+        for idx, existing in enumerate(self._diaries):
+            if existing.get("id") == updated_id:
+                self._diaries[idx] = diary
+                break
+        else:
+            self._load_data()
+            return
+        self._refresh_list(expand_id=updated_id)
+
+    def _on_review_failed(self, message: str):
+        self._close_review_progress()
+        QMessageBox.warning(self, "AI 深度复盘", f"复盘失败：{message}")
 
     def _on_save(self):
         best = self.best_op.text().strip()

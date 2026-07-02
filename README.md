@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Version-v0.0.6-red" alt="Version v0.0.6">
+  <img src="https://img.shields.io/badge/Version-v0.0.7-red" alt="Version v0.0.7">
   <img src="https://img.shields.io/badge/Python-3.10%2B-purple" alt="Python 3.10+">
   <img src="https://img.shields.io/badge/License-MIT-yellow" alt="MIT License">
   <img src="https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-cyan" alt="Platform">
@@ -28,7 +28,7 @@
   - [Phase 2 — 智能增强（进行中）](#phase-2--智能增强进行中)
   - [Phase 3 — 知识深化（规划中）](#phase-3--知识深化规划中)
   - [Phase 4 — 手机版预研（规划中）](#phase-4--手机版预研规划中)
-  - [当前版本进度快照（v0.0.6）](#当前版本进度快照v006)
+  - [当前版本进度快照（v0.0.7）](#当前版本进度快照v007)
 - [开发日志 / Changelog](#开发日志--changelog)
 - [技术架构 / Tech Stack](#技术架构--tech-stack)
 - [快速开始 / Quick Start](#快速开始--quick-start)
@@ -48,7 +48,7 @@
 
 ## 项目简介 / Project Overview
 
-**当前版本：v0.0.6**
+**当前版本：v0.0.7**
 
 RedPepper（红椒）是一款面向 A 股个人投资者的本地桌面应用，聚焦“数据沉淀 + AI 辅助 + 本地安全”。
 
@@ -136,8 +136,8 @@ RedPepper（红椒）是一款面向 A 股个人投资者的本地桌面应用�
 - [x] 截图两阶段导入（Kimi 提取 CSV + DeepSeek 结构化入库）
 - [x] 文本导入收敛（CSV/纯文本统一入口）
 - [x] 持仓与观察池同代码关联同步（导入后自动关联）
-- [ ] 投资简报生成（自动化链路已接入，实际生成仍待修复验证）
-- [ ] 投资日记（AI 深度复盘能力待完善）
+- [x] 投资简报生成（本地/云端 AI 结构化生成，服务端定时自动触发）
+- [x] 投资日记 AI 深度复盘（按需生成复盘总结、优劣势、风险与行动项）
 - [x] AGI2Rich-Notebook HTML 导入（解析增强）
 
 ### Phase 3 — 知识深化（规划中） / Knowledge Deepening
@@ -156,7 +156,7 @@ RedPepper（红椒）是一款面向 A 股个人投资者的本地桌面应用�
 - [ ] 移动端技术方案评估（React Native / Flutter / PWA）
 - [ ] 与桌面端数据与权限模型对齐方案
 
-### 当前版本进度快照（v0.0.6）
+### 当前版本进度快照（v0.0.7）
 
 - 已完成：Phase 1 全量收口；Phase 2 中观察池、操作日志、双模型、核心导入链路已打通
 - 新增：知识库 AGI2Rich HTML 导入增强（多文件 + images 目录 + 自动标签 + 内嵌预览 + 本地浏览器预览 + 批量删除）
@@ -165,19 +165,54 @@ RedPepper（红椒）是一款面向 A 股个人投资者的本地桌面应用�
 - 新增：投资简报自动化链路（上下文构建、手动生成、定时轮询、运行记录、失败详情查看）
 - 新增：持仓文本导入补全增强（中信原始文本可入库，简称可模糊补全代码与标准名称）
 - 新增：截图 OCR 本地兜底（RapidOCR + ONNXRuntime），支持本地优先识别与远端失败自动降级，导入链路稳定性提升
-- 进行中：Phase 2 深化（简报生成修复验证、日记 AI 复盘、账户类型拆分、i18n 巡检、smoke test）
+- 新增：投资简报生成收口（结构化 AI 生成 + 服务端定时自动触发）与投资日记 AI 深度复盘
+- 进行中：Phase 2 深化（账户类型拆分、i18n 巡检、smoke test）
 - 规划中：Phase 3 知识深化、Phase 4 手机版预研
-- 下一里程碑：v0.0.6 以“完成 Phase 2”为唯一主目标；Phase 3 不纳入本版本范围
+- 下一里程碑：v0.0.7 以“Phase 2 稳定收口”为主目标；Phase 3 不纳入本版本范围
 
-### v0.0.6 目标定义
+### v0.0.7 目标定义
 
 - 功能目标：完成 Phase 2 剩余核心能力收口，当前重点为“投资简报生成修复 + 投资日记 AI 深度复盘能力”与发布门槛收口
-- 发布门槛：在功能完成之外，同步完成账户类型拆分、i18n 全量巡检、smoke test 基线，确保 v0.0.6 具备稳定发布条件
-- 不纳入 v0.0.6 的内容：Phase 3 知识深化（知识图谱、知识-标的关联、自动化日报深化）
+- 发布门槛：在功能完成之外，同步完成账户类型拆分、i18n 全量巡检、smoke test 基线，确保 v0.0.7 具备稳定发布条件
+- 不纳入 v0.0.7 的内容：Phase 3 知识深化（知识图谱、知识-标的关联、自动化日报深化）
 
 ---
 
 ## 开发日志 / Changelog
+
+### v0.0.7 (2026-07-02)
+
+本版本聚焦 Phase 2 稳定收口与可用性修复。
+
+**投资简报（显示链路修复）**
+- 修复简报列表接口因历史 `updated_at=NULL` 导致的序列化 500，前端可稳定展示已生成简报
+- `BriefingResponse.updated_at` 兼容可空，数据库侧补齐历史空值，避免旧数据阻塞列表加载
+
+**投资日记 AI 深度复盘（入口与交互收口）**
+- 日记卡片头部常显「AI 深度复盘 / 重新复盘」入口，避免入口隐藏导致不可发现
+- 复盘完成后自动展开对应卡片并展示结果，减少手动查找步骤
+
+**自动化与稳定性**
+- 简报生成改为后台线程执行，避免前端主线程阻塞造成“点击无反应”
+- 保持服务端定时任务链路可用（APScheduler + `run_due_briefings`）
+
+### v0.0.6-patch (2026-07-02)
+
+本次补丁完成 Phase 2 两项核心能力：**投资简报生成收口** 与 **投资日记 AI 深度复盘**。
+
+**投资简报生成（收口 + 定时）**
+- 补齐 `ai.scene_models.briefing_generation`（默认 `deepseek-v4-pro`），不再回退到默认 provider
+- 加固 JSON 解析：新增 `parse_json_object`，在无 markdown 代码块时回退到首个平衡 `{...}` 提取，提升解析鲁棒性
+- `resolve_provider_target` 支持按模型名前缀解析（如 `deepseek-v4-pro` → deepseek provider），使 scene_models 可指定具体模型
+- 新增服务端定时任务：FastAPI lifespan 挂载 `AsyncIOScheduler`，每 5 分钟调用幂等的 `run_due_briefings`（含交易日/时间窗/去重/冷却），不再仅依赖前端轮询
+- 端到端验证：open/midday/close/manual 均可生成，`status=success`，落库与运行记录正常
+
+**投资日记 AI 深度复盘（新增）**
+- `Diary` 模型新增 AI 字段（`ai_review/ai_summary/ai_metrics/ai_provider/ai_model/ai_generated_at`），并加 `_migrate_diary_ai_columns` 兼容旧库
+- 新增 `diary_context.build_diary_context`：聚合当条日记 + 当日交易 + 持仓快照 + 当日简报 + 当日事件
+- 新增 `diary_generator.generate_diary_review`：DeepSeek-v4-pro 输出结构化复盘（总结/优点/不足/风险/行动项/纪律评分），写回并可重生成
+- 新增端点 `POST /api/diary/{id}/review`；前端日记卡片新增「AI 深度复盘 / 重新复盘」按钮，后台线程执行、进度提示、Markdown 渲染结果
+- 依赖：新增 `apscheduler`
 
 ### v0.0.6 (2026-07-01)
 

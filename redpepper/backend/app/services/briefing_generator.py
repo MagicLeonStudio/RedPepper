@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 
 from backend.app.ai.factory import get_provider, resolve_provider_target
-from backend.app.ai.ocr_utils import extract_json_block
+from backend.app.ai.ocr_utils import parse_json_object
 from backend.app.config import settings
 from backend.app.models import Briefing, BriefingRun
 from backend.app.services.briefing_context import build_briefing_context
@@ -63,11 +63,9 @@ def _build_generation_prompt(context: dict) -> str:
 
 
 def _parse_generated_payload(raw_text: str) -> dict:
-    payload = json.loads(extract_json_block(raw_text))
-    if isinstance(payload, dict) and isinstance(payload.get("briefing"), dict):
+    payload = parse_json_object(raw_text)
+    if isinstance(payload.get("briefing"), dict):
         payload = payload["briefing"]
-    if not isinstance(payload, dict):
-        raise ValueError("AI response must be a JSON object")
     return payload
 
 
@@ -158,6 +156,9 @@ async def generate_briefing(
         else:
             for key, value in normalized.items():
                 setattr(briefing, key, value)
+        # The updated_at column was added via ALTER TABLE (no DB default), so set
+        # it explicitly to avoid NULLs that break response serialization.
+        briefing.updated_at = datetime.now()
 
         run.provider = provider_name
         run.model = model

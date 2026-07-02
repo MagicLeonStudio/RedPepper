@@ -258,7 +258,7 @@ class BriefingResponse(BriefingBase):
 
     id: int
     created_at: datetime
-    updated_at: datetime
+    updated_at: Optional[datetime] = None
 
 
 class BriefingRunBase(BaseModel):
@@ -369,6 +369,28 @@ class DiaryResponse(DiaryBase):
 
     id: int
     created_at: datetime
+    ai_review: Optional[str] = None
+    ai_summary: Optional[str] = None
+    ai_metrics: Optional[str] = None
+    ai_provider: Optional[str] = None
+    ai_model: Optional[str] = None
+    ai_generated_at: Optional[datetime] = None
+
+
+class DiaryReviewRequest(BaseModel):
+    """Optional overrides for diary AI deep-review generation."""
+
+    provider: Optional[str] = None
+
+
+class DiaryReviewResponse(BaseModel):
+    """Result of a diary AI deep-review generation."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    diary: DiaryResponse
+    context: dict
+    raw_answer: str
 
 
 # =============================================================================

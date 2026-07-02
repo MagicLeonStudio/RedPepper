@@ -95,6 +95,7 @@ def init_db() -> None:
     _migrate_briefing_automation_columns()
     _migrate_knowledge_html_columns()
     _migrate_briefing_run_timestamps()
+    _migrate_diary_ai_columns()
 
 
 def _migrate_watchlist_group_columns() -> None:
@@ -148,6 +149,26 @@ def _migrate_knowledge_html_columns() -> None:
             conn.execute(text(f"ALTER TABLE knowledge ADD COLUMN {col_name} {col_type}"))
 
 
+def _migrate_diary_ai_columns() -> None:
+    """Ensure diary AI deep-review columns exist for legacy SQLite databases."""
+    required_columns = {
+        "ai_review": "TEXT",
+        "ai_summary": "TEXT",
+        "ai_metrics": "TEXT",
+        "ai_provider": "TEXT",
+        "ai_model": "TEXT",
+        "ai_generated_at": "DATETIME",
+    }
+
+    with engine.begin() as conn:
+        rows = conn.execute(text("PRAGMA table_info(diaries)")).fetchall()
+        existing = {str(row[1]) for row in rows}
+        for col_name, col_type in required_columns.items():
+            if col_name in existing:
+                continue
+            conn.execute(text(f"ALTER TABLE diaries ADD COLUMN {col_name} {col_type}"))
+
+
 def _migrate_briefing_automation_columns() -> None:
     """Ensure briefing automation metadata columns exist for legacy SQLite databases."""
     required_columns = {
@@ -167,13 +188,15 @@ def _migrate_briefing_automation_columns() -> None:
             conn.execute(text(f"ALTER TABLE briefings ADD COLUMN {col_name} {col_type}"))
         if "updated_at" not in existing:
             conn.execute(text("ALTER TABLE briefings ADD COLUMN updated_at DATETIME"))
-            conn.execute(
-                text(
-                    "UPDATE briefings "
-                    "SET updated_at = COALESCE(created_at, CURRENT_TIMESTAMP) "
-                    "WHERE updated_at IS NULL"
-                )
+        # Backfill any NULL updated_at (legacy rows or inserts that missed the
+        # server default) so BriefingResponse serialization never fails.
+        conn.execute(
+            text(
+                "UPDATE briefings "
+                "SET updated_at = COALESCE(created_at, CURRENT_TIMESTAMP) "
+                "WHERE updated_at IS NULL"
             )
+        )
 
 
 def _migrate_briefing_run_timestamps() -> None:
