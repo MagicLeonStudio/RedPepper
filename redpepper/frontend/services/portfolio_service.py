@@ -12,12 +12,22 @@ class PortfolioService:
         self.client = client or get_client()
         self.base_path = "/api/portfolio"
 
-    def get_all(self, account: str | None = None, type: str | None = None) -> list:
+    def get_all(
+        self,
+        account: str | None = None,
+        type: str | None = None,
+        account_type: str | None = None,
+        account_provider: str | None = None,
+    ) -> list:
         params = {}
         if account:
             params["account"] = account
         if type:
             params["type"] = self._map_type_to_api(type)
+        if account_type:
+            params["account_type"] = account_type
+        if account_provider:
+            params["account_provider"] = account_provider
         result = self.client.get(f"{self.base_path}/", params=params or None)
         return [self._normalize_item(item) for item in result]
 

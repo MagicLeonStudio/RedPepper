@@ -261,6 +261,91 @@ class PortfolioPage(QWidget):
         self.summary_label.setStyleSheet(f"color: {TEXT_SECONDARY}; font-size: 13px;")
         layout.addWidget(self.summary_label)
 
+        # Filter bar (account split dimensions)
+        filter_layout = QHBoxLayout()
+        filter_layout.setSpacing(8)
+
+        filter_title = QLabel("筛选")
+        filter_title.setStyleSheet(f"color: {TEXT_SECONDARY}; font-size: 12px;")
+        filter_layout.addWidget(filter_title)
+
+        self.account_keyword_input = QLineEdit()
+        self.account_keyword_input.setPlaceholderText("账户关键字（支持模糊匹配）")
+        self.account_keyword_input.setMinimumWidth(180)
+        self.account_keyword_input.setStyleSheet(f"""
+            QLineEdit {{
+                background-color: {BG_CARD};
+                color: {TEXT_PRIMARY};
+                border: 1px solid {BORDER_COLOR};
+                border-radius: 6px;
+                padding: 6px 8px;
+            }}
+            QLineEdit:focus {{ border: 1px solid {ACCENT_PURPLE}; }}
+        """)
+        self.account_keyword_input.returnPressed.connect(self._on_apply_filters)
+        filter_layout.addWidget(self.account_keyword_input)
+
+        self.account_type_filter = QComboBox()
+        self.account_type_filter.addItem("全部账户类型", None)
+        self.account_type_filter.addItem("证券", "证券")
+        self.account_type_filter.addItem("基金", "基金")
+        self.account_type_filter.setStyleSheet(f"""
+            QComboBox {{
+                background-color: {BG_CARD};
+                color: {TEXT_PRIMARY};
+                border: 1px solid {BORDER_COLOR};
+                border-radius: 6px;
+                padding: 6px 8px;
+            }}
+        """)
+        filter_layout.addWidget(self.account_type_filter)
+
+        self.account_provider_filter = QComboBox()
+        self.account_provider_filter.addItem("全部券商", None)
+        self.account_provider_filter.setStyleSheet(f"""
+            QComboBox {{
+                background-color: {BG_CARD};
+                color: {TEXT_PRIMARY};
+                border: 1px solid {BORDER_COLOR};
+                border-radius: 6px;
+                padding: 6px 8px;
+            }}
+        """)
+        filter_layout.addWidget(self.account_provider_filter)
+
+        self.btn_apply_filter = QPushButton("应用筛选")
+        self.btn_apply_filter.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {ACCENT_PURPLE};
+                color: #FFFFFF;
+                border: none;
+                border-radius: 6px;
+                padding: 6px 12px;
+                font-size: 12px;
+            }}
+            QPushButton:hover {{ background-color: #A78BFA; }}
+        """)
+        self.btn_apply_filter.clicked.connect(self._on_apply_filters)
+        filter_layout.addWidget(self.btn_apply_filter)
+
+        self.btn_reset_filter = QPushButton("重置")
+        self.btn_reset_filter.setStyleSheet(f"""
+            QPushButton {{
+                background-color: #2A2A3E;
+                color: {TEXT_PRIMARY};
+                border: 1px solid {BORDER_COLOR};
+                border-radius: 6px;
+                padding: 6px 12px;
+                font-size: 12px;
+            }}
+            QPushButton:hover {{ background-color: #3A3A4E; }}
+        """)
+        self.btn_reset_filter.clicked.connect(self._on_reset_filters)
+        filter_layout.addWidget(self.btn_reset_filter)
+
+        filter_layout.addStretch()
+        layout.addLayout(filter_layout)
+
         # Tabs
         self.tabs = QTabWidget()
         self.tabs.setStyleSheet(f"""
@@ -422,7 +507,7 @@ class PortfolioPage(QWidget):
         table.setColumnCount(10)
         table.setHorizontalHeaderLabels([
             tr("common.code"), tr("common.name"), tr("common.type"), "分组", tr("common.status"),
-            tr("common.amount"), tr("portfolio.return"), tr("dashboard.cost_price"), tr("dashboard.shares"), tr("common.account")
+            tr("common.amount"), tr("portfolio.return"), tr("dashboard.cost_price"), tr("dashboard.shares"), tr("common.account") + "(类型/券商)"
         ])
         table.setStyleSheet(TABLE_STYLE)
         table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
@@ -444,21 +529,46 @@ class PortfolioPage(QWidget):
 
     def _load_data(self):
         """Load portfolio data."""
+        account_keyword, account_type, account_provider = self._current_filters()
+
         try:
             from frontend.services.portfolio_service import PortfolioService
             svc = PortfolioService()
-            self._stock_data = svc.get_stock_holdings()
-            self._fund_data = svc.get_fund_holdings()
+            self._stock_data = (
+                svc.get_all(type="ETF", account_type=account_type, account_provider=account_provider)
+                + svc.get_all(type="股票", account_type=account_type, account_provider=account_provider)
+            )
+            self._fund_data = svc.get_all(
+                type="基金",
+                account_type=account_type,
+                account_provider=account_provider,
+            )
         except Exception:
             self._stock_data = []
             self._fund_data = []
+
+        if account_keyword:
+            self._stock_data = self._filter_by_account_keyword(self._stock_data, account_keyword)
+            self._fund_data = self._filter_by_account_keyword(self._fund_data, account_keyword)
+
+        self._sync_account_provider_options(self._stock_data + self._fund_data)
 
         self._refresh_table(self.stock_table, self._stock_data)
         self._refresh_table(self.fund_table, self._fund_data)
 
         total = sum(float(h.get("amount") or 0) for h in self._stock_data + self._fund_data)
         count = len(self._stock_data) + len(self._fund_data)
-        self.summary_label.setText(f"{tr('portfolio.total')}: ¥{total:,.2f} | {tr('common.holdings')}: {count}")
+        summary_parts = [f"{tr('portfolio.total')}: ¥{total:,.2f}", f"{tr('common.holdings')}: {count}"]
+        filter_parts = []
+        if account_keyword:
+            filter_parts.append(f"关键词:{account_keyword}")
+        if account_type:
+            filter_parts.append(f"账户类型:{account_type}")
+        if account_provider:
+            filter_parts.append(f"券商:{account_provider}")
+        if filter_parts:
+            summary_parts.append("筛选(" + " / ".join(filter_parts) + ")")
+        self.summary_label.setText(" | ".join(summary_parts))
 
         if count == 0:
             self.empty_hint.show()
@@ -493,7 +603,7 @@ class PortfolioPage(QWidget):
                 f"{'+' if return_value >= 0 else ''}¥{return_value:,.2f}",
                 f"{cost_price:.3f}",
                 f"{shares:,.2f}",
-                item.get("account", ""),
+                self._format_account_label(item),
             ]
             for col, val in enumerate(values):
                 cell = QTableWidgetItem(val)
@@ -512,6 +622,68 @@ class PortfolioPage(QWidget):
                 if col in {2, 4, 8}:
                     cell.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 table.setItem(row, col, cell)
+
+    def _current_filters(self) -> tuple[str, str | None, str | None]:
+        account_keyword = str(self.account_keyword_input.text() or "").strip()
+        account_type = self.account_type_filter.currentData()
+        account_provider = self.account_provider_filter.currentData()
+        return account_keyword, account_type, account_provider
+
+    def _filter_by_account_keyword(self, items: list[dict], keyword: str) -> list[dict]:
+        needle = str(keyword or "").strip().lower()
+        if not needle:
+            return list(items)
+
+        filtered: list[dict] = []
+        for item in items:
+            account_text = " ".join(
+                [
+                    str(item.get("account", "") or ""),
+                    str(item.get("account_name", "") or ""),
+                    str(item.get("account_provider", "") or ""),
+                ]
+            ).lower()
+            if needle in account_text:
+                filtered.append(item)
+        return filtered
+
+    def _sync_account_provider_options(self, items: list[dict]) -> None:
+        current_provider = self.account_provider_filter.currentData()
+        providers = sorted(
+            {
+                str(item.get("account_provider", "") or "").strip()
+                for item in items
+                if str(item.get("account_provider", "") or "").strip()
+            }
+        )
+
+        self.account_provider_filter.blockSignals(True)
+        self.account_provider_filter.clear()
+        self.account_provider_filter.addItem("全部券商", None)
+        for provider in providers:
+            self.account_provider_filter.addItem(provider, provider)
+
+        idx = self.account_provider_filter.findData(current_provider)
+        self.account_provider_filter.setCurrentIndex(idx if idx >= 0 else 0)
+        self.account_provider_filter.blockSignals(False)
+
+    def _format_account_label(self, item: dict) -> str:
+        account = str(item.get("account", "") or "").strip()
+        account_type = str(item.get("account_type", "") or "").strip()
+        account_provider = str(item.get("account_provider", "") or "").strip()
+        extra = "/".join(part for part in (account_type, account_provider) if part)
+        if extra:
+            return f"{account} [{extra}]"
+        return account
+
+    def _on_apply_filters(self):
+        self._load_data()
+
+    def _on_reset_filters(self):
+        self.account_keyword_input.clear()
+        self.account_type_filter.setCurrentIndex(0)
+        self.account_provider_filter.setCurrentIndex(0)
+        self._load_data()
 
     def _group_color_for_name(self, group_name: str) -> str:
         text = str(group_name or "").strip() or "未分组"
@@ -761,7 +933,18 @@ class PortfolioPage(QWidget):
     def _update_summary(self):
         total = sum(float(h.get("amount") or 0) for h in self._stock_data + self._fund_data)
         count = len(self._stock_data) + len(self._fund_data)
-        self.summary_label.setText(f"{tr('portfolio.total')}: ¥{total:,.2f} | {tr('common.holdings')}: {count}")
+        account_keyword, account_type, account_provider = self._current_filters()
+        summary_parts = [f"{tr('portfolio.total')}: ¥{total:,.2f}", f"{tr('common.holdings')}: {count}"]
+        filter_parts = []
+        if account_keyword:
+            filter_parts.append(f"关键词:{account_keyword}")
+        if account_type:
+            filter_parts.append(f"账户类型:{account_type}")
+        if account_provider:
+            filter_parts.append(f"券商:{account_provider}")
+        if filter_parts:
+            summary_parts.append("筛选(" + " / ".join(filter_parts) + ")")
+        self.summary_label.setText(" | ".join(summary_parts))
         if count == 0:
             self.empty_hint.show()
         else:

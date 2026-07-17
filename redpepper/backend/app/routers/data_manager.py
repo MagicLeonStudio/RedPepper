@@ -155,11 +155,33 @@ def _row_to_portfolio(row: dict[str, str]) -> Portfolio:
         val = val.strip()
         return int(val) if val != "" else None
 
+    ptype = row.get("type", "").strip() or "ETF"
+    account = row.get("account", "").strip() or "中信证券"
+    account_name = row.get("account_name", "").strip() or account
+    account_provider = row.get("account_provider", "").strip()
+    if not account_provider:
+        low_account = account.lower()
+        low_name = account_name.lower()
+        if "同花顺" in account or "同花顺" in account_name:
+            account_provider = "同花顺"
+        elif "中信" in account or "中信" in account_name or "citic" in low_account or "citic" in low_name:
+            account_provider = "中信"
+
+    account_type = row.get("account_type", "").strip()
+    if not account_type:
+        if any(token in f"{account}{account_name}" for token in ("基金", "理财", "钱包")) or ptype == "基金":
+            account_type = "基金"
+        else:
+            account_type = "证券"
+
     return Portfolio(
         code=row.get("code", "").strip(),
         name=row.get("name", "").strip() or "",
-        type=row.get("type", "").strip() or "ETF",
-        account=row.get("account", "").strip() or "中信",
+        type=ptype,
+        account=account,
+        account_type=account_type,
+        account_name=account_name,
+        account_provider=account_provider or None,
         sector=row.get("sector", "").strip() or None,
         amount=_f(row.get("amount")),
         profit=_f(row.get("profit")),

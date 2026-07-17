@@ -61,6 +61,9 @@ class PortfolioBase(BaseModel):
     current_price: Optional[float] = None
     shares: Optional[int] = None
     account: str = Field(default="中信", max_length=50)
+    account_type: str = Field(default="证券", max_length=20)
+    account_name: Optional[str] = Field(default=None, max_length=50)
+    account_provider: Optional[str] = Field(default=None, max_length=50)
     status: str = Field(default="持有中", max_length=20)
     reason: Optional[str] = None
     target: Optional[str] = Field(default=None, max_length=200)
@@ -90,6 +93,9 @@ class PortfolioUpdate(BaseModel):
     current_price: Optional[float] = None
     shares: Optional[int] = None
     account: Optional[str] = Field(default=None, max_length=50)
+    account_type: Optional[str] = Field(default=None, max_length=20)
+    account_name: Optional[str] = Field(default=None, max_length=50)
+    account_provider: Optional[str] = Field(default=None, max_length=50)
     status: Optional[str] = Field(default=None, max_length=20)
     reason: Optional[str] = None
     target: Optional[str] = Field(default=None, max_length=200)
@@ -531,6 +537,15 @@ class AccountBreakdown(BaseModel):
     count: int
 
 
+class AccountTypeBreakdown(BaseModel):
+    """Per-account-type asset breakdown."""
+
+    account_type: str
+    total_amount: float
+    total_profit: float
+    count: int
+
+
 class SectorBreakdown(BaseModel):
     """Per-sector asset breakdown."""
 
@@ -555,6 +570,7 @@ class PortfolioSummary(BaseModel):
     total_assets: float
     total_profit: float
     account_breakdown: list[AccountBreakdown]
+    account_type_breakdown: list[AccountTypeBreakdown]
     sector_breakdown: list[SectorBreakdown]
     type_breakdown: list[TypeBreakdown]
 
@@ -626,6 +642,9 @@ class OCRHolding(BaseModel):
     cost_price: Optional[float] = None
     shares: Optional[int] = None
     account: str = Field(default="中信", max_length=50)
+    account_type: str = Field(default="证券", max_length=20)
+    account_name: Optional[str] = Field(default=None, max_length=50)
+    account_provider: Optional[str] = Field(default=None, max_length=50)
     status: str = Field(default="持有中", max_length=20)
     group_name: Optional[str] = Field(default=None, max_length=50)
     group_color: Optional[str] = Field(default=None, max_length=16)

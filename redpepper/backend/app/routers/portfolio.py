@@ -31,6 +31,7 @@ from backend.app.dependencies import get_db
 from backend.app.models import Portfolio, Watchlist
 from backend.app.schemas import (
     AccountBreakdown,
+    AccountTypeBreakdown,
     OCRHolding,
     OCRRequest,
     OCRResponse,
@@ -70,6 +71,9 @@ _PORTFOLIO_SYNC_FIELDS = (
     "current_price",
     "shares",
     "account",
+    "account_type",
+    "account_name",
+    "account_provider",
     "status",
     "reason",
     "target",
@@ -132,6 +136,92 @@ def _normalize_portfolio_account(value: object, *, source_text: str = "") -> str
     if any(token in text for token in ("中信", "citic", "a股", "股票")):
         return "中信证券"
     return text
+
+
+def _normalize_account_provider(value: object, *, account_text: str = "") -> str | None:
+    text = _clean_text(value or account_text, max_length=50)
+    if not text:
+        return None
+    low = text.lower()
+    if "同花顺" in text or "ths" in low:
+        return "同花顺"
+    if "中信" in text or "citic" in low:
+        return "中信"
+    return text[:20]
+
+
+def _normalize_account_type(
+    value: object,
+    *,
+    account_text: str = "",
+    source_text: str = "",
+    security_type: str = "ETF",
+) -> str:
+    text = _clean_text(value, max_length=20)
+    low = text.lower()
+    if low in {"基金", "fund", "funds", "fund_account", "fundaccount"}:
+        return "基金"
+    if low in {"证券", "stock", "broker", "brokerage", "securities"}:
+        return "证券"
+
+    normalized_account = _normalize_portfolio_account(account_text, source_text=source_text)
+    if _is_ths_fund_source(source_text):
+        return "基金"
+    if any(token in normalized_account for token in ("基金", "理财", "钱包")):
+        return "基金"
+    if _normalize_portfolio_type(security_type) == "基金" and "同花顺" in normalized_account:
+        return "基金"
+    return "证券"
+
+
+def _normalize_account_name(
+    value: object,
+    *,
+    account_text: str,
+    account_type: str,
+    account_provider: str | None,
+) -> str:
+    text = _clean_text(value or account_text, max_length=50)
+    if text:
+        return text
+    if account_provider == "同花顺" and account_type == "基金":
+        return "同花顺基金"
+    if account_provider == "中信":
+        return "中信证券"
+    if account_type == "基金":
+        return "基金账户"
+    return "证券账户"
+
+
+def _build_account_profile(
+    *,
+    account: object,
+    account_type: object = "",
+    account_name: object = "",
+    account_provider: object = "",
+    source_text: str = "",
+    security_type: str = "ETF",
+) -> dict[str, str | None]:
+    normalized_account = _normalize_portfolio_account(account, source_text=source_text)
+    normalized_type = _normalize_account_type(
+        account_type,
+        account_text=normalized_account,
+        source_text=source_text,
+        security_type=security_type,
+    )
+    normalized_provider = _normalize_account_provider(account_provider, account_text=normalized_account)
+    normalized_name = _normalize_account_name(
+        account_name,
+        account_text=normalized_account,
+        account_type=normalized_type,
+        account_provider=normalized_provider,
+    )
+    return {
+        "account": normalized_account,
+        "account_type": normalized_type,
+        "account_name": normalized_name,
+        "account_provider": normalized_provider,
+    }
 
 
 def _normalize_portfolio_status(value: object) -> str:
@@ -506,15 +596,27 @@ def _normalize_ocr_item(raw: dict) -> OCRHolding:
         name_match = _NAME_RE.search(str(_first("raw", "line", "text", "备注", "说明")))
         name = name_match.group(0) if name_match else ""
 
+    normalized_type = _normalize_portfolio_type(str(item_type).strip() or "ETF")
+    account_profile = _build_account_profile(
+        account=_first("account", "账户"),
+        account_type=_first("account_type", "账户类型"),
+        account_name=_first("account_name", "账户名称"),
+        account_provider=_first("account_provider", "券商", "provider"),
+        security_type=normalized_type,
+    )
+
     return OCRHolding(
         code=code,
         name=name,
-        type=_normalize_portfolio_type(str(item_type).strip() or "ETF"),
+        type=normalized_type,
         amount=coerce_float(_first("amount", "market_value", "最新市值", "市值")),
         profit=coerce_float(_first("profit", "pnl", "浮动盈亏", "盈亏")),
         cost_price=coerce_float(_first("cost_price", "cost", "成本价", "成本")),
         shares=coerce_int(_first("shares", "quantity", "持股数量", "实际数量", "持仓数量", "持仓")),
-        account=_clean_text(_first("account", "账户"), default="中信", max_length=50),
+        account=account_profile["account"] or "中信证券",
+        account_type=account_profile["account_type"] or "证券",
+        account_name=account_profile["account_name"],
+        account_provider=account_profile["account_provider"],
         status=_normalize_portfolio_status(_first("status", "状态") or "持有中"),
         group_name=group_name,
         group_color=group_color,
@@ -821,7 +923,10 @@ def _parse_portfolio_broker_dump_text(raw_text: str) -> list[OCRHolding]:
                 profit=profit,
                 cost_price=cost_price,
                 shares=shares,
-                account="中信",
+                account="中信证券",
+                account_type="证券",
+                account_name="中信证券",
+                account_provider="中信",
                 status="持有中",
             )
         )
@@ -898,7 +1003,10 @@ def _parse_portfolio_text(raw_text: str) -> list[OCRHolding]:
                 profit=profit,
                 cost_price=cost_price,
                 shares=shares,
-                account="中信",
+                account="中信证券",
+                account_type="证券",
+                account_name="中信证券",
+                account_provider="中信",
                 status="持有中",
             )
         )
@@ -956,7 +1064,10 @@ def _parse_portfolio_code_name_pairs(raw_text: str) -> list[OCRHolding]:
                         profit=None,
                         cost_price=None,
                         shares=None,
-                        account="中信",
+                        account="中信证券",
+                        account_type="证券",
+                        account_name="中信证券",
+                        account_provider="中信",
                         status="持有中",
                     )
                 )
@@ -979,7 +1090,10 @@ def _parse_portfolio_code_name_pairs(raw_text: str) -> list[OCRHolding]:
                         profit=None,
                         cost_price=None,
                         shares=None,
-                        account="中信",
+                        account="中信证券",
+                        account_type="证券",
+                        account_name="中信证券",
+                        account_provider="中信",
                         status="持有中",
                     )
                 )
@@ -1145,7 +1259,7 @@ async def _enrich_portfolio_items_with_deepseek(items: list[OCRHolding], raw_tex
         "2) 当条目缺少code但有name时，请尽量推断A股/ETF/基金的6位代码；无法确定再保留空；\n"
         "3) type 只能是 股票/ETF/基金；\n"
         "4) status 只能是 持有中/减仓中/已清仓；\n"
-        "5) 输出 JSON 数组，每项字段: code,name,type,amount,profit,cost_price,shares,account,status；\n"
+        "5) 输出 JSON 数组，每项字段: code,name,type,amount,profit,cost_price,shares,account,account_type,account_name,account_provider,status；\n"
         "6) 无法判断的字段保留 null 或原值；\n"
         "7) 只返回 JSON。\n\n"
         f"原始OCR文本:\n{raw_text}\n\n"
@@ -1196,7 +1310,19 @@ async def _enrich_portfolio_items_with_deepseek(items: list[OCRHolding], raw_tex
                 continue
 
         current = merged[match_key]
-        for field in ("name", "type", "amount", "profit", "cost_price", "shares", "account", "status"):
+        for field in (
+            "name",
+            "type",
+            "amount",
+            "profit",
+            "cost_price",
+            "shares",
+            "account",
+            "account_type",
+            "account_name",
+            "account_provider",
+            "status",
+        ):
             if current.get(field) in (None, "") and row.get(field) not in (None, ""):
                 current[field] = row.get(field)
         if not current.get("code") and code:
@@ -1209,16 +1335,28 @@ async def _enrich_portfolio_items_with_deepseek(items: list[OCRHolding], raw_tex
         row_name = _clean_text(row.get("name", ""), max_length=100)
         if not row_name:
             continue
+        normalized_type = _normalize_portfolio_type(row.get("type", "ETF"))
+        account_profile = _build_account_profile(
+            account=row.get("account", ""),
+            account_type=row.get("account_type", ""),
+            account_name=row.get("account_name", ""),
+            account_provider=row.get("account_provider", ""),
+            source_text=raw_text,
+            security_type=normalized_type,
+        )
         normalized.append(
             OCRHolding(
                 code=row_code,
                 name=row_name,
-                type=_normalize_portfolio_type(row.get("type", "ETF")),
+                type=normalized_type,
                 amount=coerce_float(row.get("amount")),
                 profit=coerce_float(row.get("profit")),
                 cost_price=coerce_float(row.get("cost_price")),
                 shares=coerce_int(row.get("shares")),
-                account=_normalize_portfolio_account(row.get("account", ""), source_text=raw_text),
+                account=account_profile["account"] or "中信证券",
+                account_type=account_profile["account_type"] or "证券",
+                account_name=account_profile["account_name"],
+                account_provider=account_profile["account_provider"],
                 status=_normalize_portfolio_status(row.get("status", "持有中")),
             )
         )
@@ -1231,11 +1369,24 @@ def _build_portfolio_from_row(row: dict) -> Portfolio:
         group_color=row.get("group_color", ""),
         group_order=row.get("group_order", _DEFAULT_GROUP_ORDER),
     )
+    normalized_type = _normalize_portfolio_type(str(row.get("type", "") or "ETF").strip() or "ETF")
+    account_profile = _build_account_profile(
+        account=row.get("account", ""),
+        account_type=row.get("account_type", ""),
+        account_name=row.get("account_name", ""),
+        account_provider=row.get("account_provider", ""),
+        source_text=str(row.get("raw_text", "") or ""),
+        security_type=normalized_type,
+    )
+
     return Portfolio(
         code=str(row.get("code", "") or "").strip(),
         name=str(row.get("name", "") or "").strip(),
-        type=_normalize_portfolio_type(str(row.get("type", "") or "ETF").strip() or "ETF"),
-        account=_normalize_portfolio_account(row.get("account", "")),
+        type=normalized_type,
+        account=account_profile["account"] or "中信证券",
+        account_type=account_profile["account_type"] or "证券",
+        account_name=account_profile["account_name"],
+        account_provider=account_profile["account_provider"],
         sector=str(row.get("sector", "") or row.get("industry", "")).strip() or None,
         amount=coerce_float(row.get("amount") or row.get("market_value")),
         profit=coerce_float(row.get("profit") or row.get("pnl") or row.get("return_value")),
@@ -1274,7 +1425,7 @@ async def _import_portfolio_rows(rows: list[dict], db: Session) -> dict:
             if not name:
                 errors.append(f"Row {row_num}: missing name")
                 continue
-            account = _clean_text(item.account, default="中信", max_length=50)
+            account = _clean_text(item.account, default="中信证券", max_length=50)
             ptype = _normalize_portfolio_type(getattr(item, "type", "ETF"))
             key = (code if code else f"name:{name}", account, ptype)
             incoming_by_key[key] = item
@@ -1302,7 +1453,7 @@ async def _import_portfolio_rows(rows: list[dict], db: Session) -> dict:
     for existing in existing_items:
         code = _clean_text(getattr(existing, "code", ""), max_length=20)
         name = _clean_text(getattr(existing, "name", ""), max_length=100)
-        account = _clean_text(getattr(existing, "account", "中信"), default="中信", max_length=50)
+        account = _clean_text(getattr(existing, "account", "中信证券"), default="中信证券", max_length=50)
         ptype = _normalize_portfolio_type(getattr(existing, "type", "ETF"))
         if not code and not name:
             continue
@@ -1889,6 +2040,9 @@ def _parse_portfolio_csv_rows(csv_text: str) -> list[dict]:
         "profit": ["profit", "pnl", "盈亏", "浮动盈亏"],
         "amount": ["amount", "market_value", "市值", "最新市值"],
         "account": ["account", "账户"],
+        "account_type": ["account_type", "账户类型"],
+        "account_name": ["account_name", "账户名称"],
+        "account_provider": ["account_provider", "券商", "平台"],
         "status": ["status", "状态"],
     }
 
@@ -1923,6 +2077,9 @@ def _parse_portfolio_csv_rows(csv_text: str) -> list[dict]:
                 "profit": _value(row, "profit"),
                 "amount": _value(row, "amount"),
                 "account": _value(row, "account"),
+                "account_type": _value(row, "account_type"),
+                "account_name": _value(row, "account_name"),
+                "account_provider": _value(row, "account_provider"),
                 "status": _value(row, "status") or "持有中",
             }
         )
@@ -2023,16 +2180,28 @@ async def _normalize_portfolio_rows_with_deepseek(csv_text: str, rows: list[dict
             name = _clean_text(row.get("name", ""), max_length=100)
             if not name:
                 continue
+            ptype = _normalize_portfolio_type(row.get("type", "ETF"))
+            account_profile = _build_account_profile(
+                account=row.get("account", default_account),
+                account_type=row.get("account_type", ""),
+                account_name=row.get("account_name", ""),
+                account_provider=row.get("account_provider", ""),
+                source_text=source_text,
+                security_type=ptype,
+            )
             normalized_rows.append(
                 {
                     "code": code,
                     "name": name,
-                    "type": _normalize_portfolio_type(row.get("type", "ETF")),
+                    "type": ptype,
                     "amount": coerce_float(row.get("amount")),
                     "profit": coerce_float(row.get("profit")),
                     "cost_price": coerce_float(row.get("cost_price")),
                     "shares": coerce_int(row.get("shares")),
-                    "account": _normalize_portfolio_account(row.get("account", default_account), source_text=source_text),
+                    "account": account_profile["account"],
+                    "account_type": account_profile["account_type"],
+                    "account_name": account_profile["account_name"],
+                    "account_provider": account_profile["account_provider"],
                     "status": _normalize_portfolio_status(row.get("status", "持有中")),
                 }
             )
@@ -2053,16 +2222,18 @@ async def _normalize_portfolio_rows_with_deepseek(csv_text: str, rows: list[dict
     settings.reload()
     prompt = (
         "你是同花顺持仓结构化清洗助手。基于原始文本和初步解析结果，输出可直接入库的 JSON 数组。"
-        "每项字段固定为：code,name,type,amount,profit,cost_price,shares,account,status。"
+        "每项字段固定为：code,name,type,amount,profit,cost_price,shares,account,account_type,account_name,account_provider,status。"
         "规则：\n"
         "1) code 必须是 6 位；\n"
         "2) type 只能是 股票/ETF/基金；\n"
         "3) status 只能是 持有中/减仓中/已清仓；\n"
         "4) account 要区分账户：若文本中出现 同花顺钱包/同花顺理财/同花顺基金 或 account 列已是 同花顺基金 则填 同花顺基金，否则保留原有 account（默认 中信证券），不要擅自更改已给定的 account；\n"
-        "5) 数值字段无法确定时可为 null；\n"
-        "6) 如果多行持仓名称相似（如\"科创50\"与\"科创50ETF\"、\"纳指\"与\"纳指ETF\"指同一标的），"
+        "5) account_type 只能是 证券 或 基金；同花顺基金账户输出 基金，其余默认 证券；\n"
+        "6) account_name 输出账户展示名（如 同花顺基金/中信证券）；account_provider 输出券商或平台（如 同花顺/中信）；\n"
+        "7) 数值字段无法确定时可为 null；\n"
+        "8) 如果多行持仓名称相似（如\"科创50\"与\"科创50ETF\"、\"纳指\"与\"纳指ETF\"指同一标的），"
         "合并为一行，取信息最完整的那行，保留更完整的名称；\n"
-        "7) 只返回 JSON，不要解释。\n\n"
+        "9) 只返回 JSON，不要解释。\n\n"
         f"原始文本:\n{source_text}\n\n"
         f"初步解析:\n{json.dumps(rows, ensure_ascii=False)}"
     )
@@ -2127,6 +2298,8 @@ def _get_item(db: Session, item_id: int) -> Portfolio:
 @router.get("/", response_model=list[PortfolioResponse])
 async def list_portfolio(
     account: str | None = Query(None),
+    account_type: str | None = Query(None),
+    account_provider: str | None = Query(None),
     type: str | None = Query(None),
     status: str | None = Query(None),
     db: Session = Depends(get_db),
@@ -2134,6 +2307,10 @@ async def list_portfolio(
     query = db.query(Portfolio)
     if account:
         query = query.filter(Portfolio.account == account)
+    if account_type:
+        query = query.filter(Portfolio.account_type == account_type)
+    if account_provider:
+        query = query.filter(Portfolio.account_provider == account_provider)
     if type:
         query = query.filter(Portfolio.type == type)
     if status:
@@ -2159,6 +2336,7 @@ async def portfolio_summary(db: Session = Depends(get_db)) -> PortfolioSummary:
     total_assets = 0.0
     total_profit = 0.0
     account_map: dict[str, list[float]] = {}
+    account_type_map: dict[str, list[float]] = {}
     sector_map: dict[str, list[float]] = {}
     type_map: dict[str, list[float]] = {}
 
@@ -2168,6 +2346,11 @@ async def portfolio_summary(db: Session = Depends(get_db)) -> PortfolioSummary:
         account = getattr(item, "account", "unknown") or "unknown"
         sector = getattr(item, "sector", "未分类") or "未分类"
         ptype = getattr(item, "type", "unknown") or "unknown"
+        account_type = _normalize_account_type(
+            getattr(item, "account_type", ""),
+            account_text=account,
+            security_type=ptype,
+        )
 
         total_assets += amount
         total_profit += profit
@@ -2177,6 +2360,12 @@ async def portfolio_summary(db: Session = Depends(get_db)) -> PortfolioSummary:
         account_map[account][0] += amount
         account_map[account][1] += profit
         account_map[account][2] += 1
+
+        if account_type not in account_type_map:
+            account_type_map[account_type] = [0.0, 0.0, 0]
+        account_type_map[account_type][0] += amount
+        account_type_map[account_type][1] += profit
+        account_type_map[account_type][2] += 1
 
         if sector not in sector_map:
             sector_map[sector] = [0.0, 0.0, 0]
@@ -2194,6 +2383,10 @@ async def portfolio_summary(db: Session = Depends(get_db)) -> PortfolioSummary:
         AccountBreakdown(account=k, total_amount=v[0], total_profit=v[1], count=v[2])
         for k, v in account_map.items()
     ]
+    account_type_breakdown = [
+        AccountTypeBreakdown(account_type=k, total_amount=v[0], total_profit=v[1], count=v[2])
+        for k, v in account_type_map.items()
+    ]
     sector_breakdown = [
         SectorBreakdown(sector=k, total_amount=v[0], total_profit=v[1], count=v[2])
         for k, v in sector_map.items()
@@ -2207,6 +2400,7 @@ async def portfolio_summary(db: Session = Depends(get_db)) -> PortfolioSummary:
         total_assets=total_assets,
         total_profit=total_profit,
         account_breakdown=account_breakdown,
+        account_type_breakdown=account_type_breakdown,
         sector_breakdown=sector_breakdown,
         type_breakdown=type_breakdown,
     )
@@ -2575,8 +2769,18 @@ async def create_portfolio(
     db: Session = Depends(get_db),
 ) -> Portfolio:
     payload = data.model_dump()
+    fields_set = set(getattr(data, "model_fields_set", set()))
     payload["type"] = _normalize_portfolio_type(payload.get("type", "ETF"))
     payload["status"] = _normalize_portfolio_status(payload.get("status", "持有中"))
+    payload.update(
+        _build_account_profile(
+            account=payload.get("account", ""),
+            account_type=payload.get("account_type", "") if "account_type" in fields_set else "",
+            account_name=payload.get("account_name", "") if "account_name" in fields_set else "",
+            account_provider=payload.get("account_provider", "") if "account_provider" in fields_set else "",
+            security_type=payload.get("type", "ETF"),
+        )
+    )
     group_name, group_color, group_order = _derive_group_fields(
         group_name=payload.get("group_name"),
         group_color=payload.get("group_color"),
@@ -2606,10 +2810,41 @@ async def update_portfolio(
 ) -> Portfolio:
     item = _get_item(db, id)
     payload = data.model_dump(exclude_unset=True)
+    account_changed = "account" in payload
+    type_changed = "type" in payload
+
     if "type" in payload:
         payload["type"] = _normalize_portfolio_type(payload.get("type"))
     if "status" in payload:
         payload["status"] = _normalize_portfolio_status(payload.get("status"))
+
+    profile_account = payload.get("account", item.account)
+    profile_type = payload.get("type", item.type)
+
+    # If account/type changes and caller does not explicitly provide account
+    # dimensions, recompute them from the new profile rather than keeping stale
+    # values from the old account.
+    profile_account_type = payload.get("account_type", "")
+    if "account_type" not in payload and not (account_changed or type_changed):
+        profile_account_type = item.account_type
+
+    profile_account_name = payload.get("account_name", "")
+    if "account_name" not in payload and not account_changed:
+        profile_account_name = item.account_name
+
+    profile_account_provider = payload.get("account_provider", "")
+    if "account_provider" not in payload and not account_changed:
+        profile_account_provider = item.account_provider
+
+    payload.update(
+        _build_account_profile(
+            account=profile_account,
+            account_type=profile_account_type,
+            account_name=profile_account_name,
+            account_provider=profile_account_provider,
+            security_type=profile_type,
+        )
+    )
     if {"group_name", "group_color", "group_order"} & set(payload.keys()):
         group_name, group_color, group_order = _derive_group_fields(
             group_name=payload.get("group_name", item.group_name),

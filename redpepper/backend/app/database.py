@@ -92,6 +92,7 @@ def init_db() -> None:
     Base.metadata.create_all(bind=engine)
     _migrate_watchlist_group_columns()
     _migrate_portfolio_status_and_group_columns()
+    _migrate_portfolio_account_dimension_columns()
     _migrate_briefing_automation_columns()
     _migrate_knowledge_html_columns()
     _migrate_briefing_run_timestamps()
@@ -131,6 +132,53 @@ def _migrate_portfolio_status_and_group_columns() -> None:
             if col_name in existing:
                 continue
             conn.execute(text(f"ALTER TABLE portfolio ADD COLUMN {col_name} {col_type}"))
+
+
+def _migrate_portfolio_account_dimension_columns() -> None:
+    """Ensure account split columns exist and are backfilled on legacy databases."""
+    required_columns = {
+        "account_type": "TEXT NOT NULL DEFAULT '证券'",
+        "account_name": "TEXT",
+        "account_provider": "TEXT",
+    }
+
+    with engine.begin() as conn:
+        rows = conn.execute(text("PRAGMA table_info(portfolio)")).fetchall()
+        existing = {str(row[1]) for row in rows}
+        for col_name, col_type in required_columns.items():
+            if col_name in existing:
+                continue
+            conn.execute(text(f"ALTER TABLE portfolio ADD COLUMN {col_name} {col_type}"))
+
+        conn.execute(
+            text(
+                "UPDATE portfolio "
+                "SET account_name = COALESCE(NULLIF(TRIM(account_name), ''), NULLIF(TRIM(account), ''), '中信证券') "
+                "WHERE account_name IS NULL OR TRIM(account_name) = ''"
+            )
+        )
+
+        conn.execute(
+            text(
+                "UPDATE portfolio "
+                "SET account_provider = CASE "
+                "WHEN account_provider IS NOT NULL AND TRIM(account_provider) <> '' THEN account_provider "
+                "WHEN account LIKE '%同花顺%' OR account_name LIKE '%同花顺%' THEN '同花顺' "
+                "WHEN lower(account) LIKE '%citic%' OR account LIKE '%中信%' OR account_name LIKE '%中信%' THEN '中信' "
+                "ELSE account_provider END"
+            )
+        )
+
+        conn.execute(
+            text(
+                "UPDATE portfolio "
+                "SET account_type = CASE "
+                "WHEN account LIKE '%基金%' OR account LIKE '%理财%' OR account LIKE '%钱包%' THEN '基金' "
+                "WHEN account_name LIKE '%基金%' OR type = '基金' THEN '基金' "
+                "WHEN account_type IS NULL OR TRIM(account_type) = '' THEN '证券' "
+                "ELSE account_type END"
+            )
+        )
 
 
 def _migrate_knowledge_html_columns() -> None:
